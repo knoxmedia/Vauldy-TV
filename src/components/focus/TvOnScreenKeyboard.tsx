@@ -9,6 +9,7 @@ const URL_ROW = [":", "/", ".", "-", "_"] as const;
 type Props = {
   value: string;
   onChangeText: (value: string) => void;
+  /** Called when user confirms (确定) — typically hide the keyboard. */
   onDone?: () => void;
   variant?: "default" | "url";
   preferredFocus?: boolean;
@@ -85,9 +86,7 @@ export default function TvOnScreenKeyboard({
       <View style={styles.row}>
         {renderKey(t("keyboard.backspace"), () => onChangeText(value.slice(0, -1)), { wide: true })}
         {renderKey(t("keyboard.clear"), () => onChangeText(""), { wide: true })}
-        {onDone
-          ? renderKey(variant === "url" ? t("common.save") : t("login.submit"), onDone, { wide: true, accent: true })
-          : null}
+        {onDone ? renderKey(t("keyboard.done"), onDone, { wide: true, accent: true }) : null}
       </View>
     </View>
   );

@@ -1,7 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { fetchUserInfo, login } from "@/api/client";
 import FocusablePressable from "@/components/focus/FocusablePressable";
 import TvOnScreenKeyboard from "@/components/focus/TvOnScreenKeyboard";
@@ -11,8 +11,9 @@ import { t } from "@/i18n";
 import { useAuthStore } from "@/store/auth";
 import { useConfigStore } from "@/store/config";
 
-// Android TV builds may not always set Platform.isTV in dev; this is a TV-only app.
 const useScreenKeyboard = Platform.OS === "android" || Platform.isTV;
+
+type EditField = "username" | "password" | null;
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -21,10 +22,11 @@ export default function LoginScreen() {
   const setProfile = useAuthStore((s) => s.setProfile);
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
-  const [passwordFocused, setPasswordFocused] = useState(false);
+  const [editField, setEditField] = useState<EditField>(null);
   const [loading, setLoading] = useState(false);
 
   async function submit() {
+    setEditField(null);
     setLoading(true);
     try {
       const token = await login(username, password);
@@ -44,6 +46,8 @@ export default function LoginScreen() {
     }
   }
 
+  const keyboardOpen = editField !== null;
+
   return (
     <LinearGradient colors={["#0f1419", "#1a2332"]} style={styles.gradient}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="always">
@@ -52,32 +56,40 @@ export default function LoginScreen() {
           <Text style={styles.subtitle}>{t("login.subtitle")}</Text>
 
           <Text style={styles.label}>{t("login.username")}</Text>
-          <TvTextInput
-            preferredFocus
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-            autoCorrect={false}
-            showSoftInputOnFocus={!useScreenKeyboard}
-          />
+          {useScreenKeyboard ? (
+            <FocusablePressable
+              preferredFocus={!keyboardOpen}
+              onPress={() => setEditField("username")}
+              style={[styles.fieldDisplay, editField === "username" && styles.fieldActive]}
+              focusedStyle={styles.fieldFocused}
+            >
+              <Text style={[styles.fieldText, !username && styles.placeholder]} numberOfLines={1}>
+                {username || t("login.username")}
+              </Text>
+              {editField !== "username" ? <Text style={styles.tapHint}>{t("keyboard.tap_to_edit")}</Text> : null}
+            </FocusablePressable>
+          ) : (
+            <TvTextInput
+              preferredFocus
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          )}
 
           <Text style={styles.label}>{t("login.password")}</Text>
           {useScreenKeyboard ? (
-            <>
-              <Pressable
-                focusable
-                onPress={() => setPasswordFocused(true)}
-                style={[styles.passwordDisplay, passwordFocused && styles.passwordDisplayFocused]}
-              >
-                <Text style={styles.passwordText}>
-                  {password ? "•".repeat(password.length) : t("login.password_placeholder")}
-                </Text>
-              </Pressable>
-              <Pressable onPress={() => setPassword("admin123")} style={styles.demoFill}>
-                <Text style={styles.demoFillText}>{t("login.fill_demo_password")}</Text>
-              </Pressable>
-              <TvOnScreenKeyboard value={password} onChangeText={setPassword} onDone={() => void submit()} />
-            </>
+            <FocusablePressable
+              onPress={() => setEditField("password")}
+              style={[styles.fieldDisplay, editField === "password" && styles.fieldActive]}
+              focusedStyle={styles.fieldFocused}
+            >
+              <Text style={[styles.fieldText, styles.passwordText, !password && styles.placeholder]} numberOfLines={1}>
+                {password ? "•".repeat(Math.min(password.length, 24)) : t("login.password_placeholder")}
+              </Text>
+              {editField !== "password" ? <Text style={styles.tapHint}>{t("keyboard.tap_to_edit")}</Text> : null}
+            </FocusablePressable>
           ) : (
             <TvTextInput
               value={password}
@@ -89,6 +101,21 @@ export default function LoginScreen() {
               onSubmitEditing={() => void submit()}
             />
           )}
+
+          {useScreenKeyboard ? (
+            <FocusablePressable onPress={() => setPassword("admin123")} style={styles.demoFill} focusedStyle={styles.demoFillFocused}>
+              <Text style={styles.demoFillText}>{t("login.fill_demo_password")}</Text>
+            </FocusablePressable>
+          ) : null}
+
+          {keyboardOpen ? (
+            <TvOnScreenKeyboard
+              preferredFocus
+              value={editField === "password" ? password : username}
+              onChangeText={editField === "password" ? setPassword : setUsername}
+              onDone={() => setEditField(null)}
+            />
+          ) : null}
 
           <Text style={styles.hint}>{t("login.demo_hint")}</Text>
           <FocusablePressable onPress={() => void submit()} style={styles.button} focusedStyle={styles.buttonFocused}>
@@ -102,7 +129,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   gradient: { flex: 1 },
-  scroll: { padding: spacing.xl, paddingTop: 48 },
+  scroll: { padding: spacing.xl, paddingTop: 48, flexGrow: 1, justifyContent: "center" },
   card: {
     width: 560,
     alignSelf: "center",
@@ -112,13 +139,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  cardWide: { width: 720 },
+  cardWide: { width: 720, maxWidth: "100%" },
   title: { color: colors.text, fontSize: 32, fontWeight: "700" },
   subtitle: { color: colors.textSecondary, marginTop: 12, marginBottom: 28, fontSize: 18 },
   label: { color: colors.textSecondary, fontSize: 16, marginBottom: 10, marginTop: 12 },
-  passwordDisplay: {
+  fieldDisplay: {
     backgroundColor: colors.inputBg,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.borderLight,
     borderRadius: radius.md,
     paddingHorizontal: 16,
@@ -126,11 +153,20 @@ const styles = StyleSheet.create({
     minHeight: 52,
     justifyContent: "center",
   },
-  passwordDisplayFocused: {
+  fieldFocused: {
     borderColor: colors.brand,
-    borderWidth: 2,
   },
-  passwordText: { color: colors.text, fontSize: 22, letterSpacing: 3 },
+  fieldActive: {
+    borderColor: colors.accent,
+  },
+  fieldText: { color: colors.text, fontSize: 22 },
+  passwordText: { letterSpacing: 3 },
+  placeholder: { color: colors.textMuted },
+  tapHint: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: spacing.sm,
+  },
   demoFill: {
     marginTop: 10,
     alignSelf: "flex-start",
@@ -140,6 +176,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentBg,
     borderWidth: 1,
     borderColor: colors.accent,
+  },
+  demoFillFocused: {
+    borderColor: colors.brand,
+    borderWidth: 2,
   },
   demoFillText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
   hint: { color: colors.textMuted, marginTop: 16, fontSize: 14 },
