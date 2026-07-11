@@ -5,10 +5,14 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
-    "android": "expo run:android",
+    "android": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/with-android-env.ps1 run:android",
     "ios": "expo run:ios",
-    "prebuild:tv": "cross-env EXPO_TV=1 expo prebuild --clean",
-    "typecheck": "tsc --noEmit"
+    "prebuild:tv": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/with-android-env.ps1 prebuild --clean",
+    "apk:release": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-release-apk.ps1 -Arch arm64-v8a",
+    "apk:release:arm64": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-release-apk.ps1 -Arch arm64-v8a",
+    "apk:release:armv7": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-release-apk.ps1 -Arch armeabi-v7a",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@expo/metro-runtime": "~4.0.1",
@@ -38,6 +42,7 @@
     "@react-native-tvos/config-tv": "^0.1.1",
     "@types/react": "~18.3.12",
     "cross-env": "^7.0.3",
-    "typescript": "~5.3.3"
+    "typescript": "~5.3.3",
+    "vitest": "^4.1.10"
   }
 }
