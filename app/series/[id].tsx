@@ -175,7 +175,7 @@ export default function SeriesDetailScreen() {
   const { index: actionIndex } = useTvRemoteNav({
     mode: "horizontal",
     count: 2,
-    enabled: !loading && !!detail && focusZone === "actions",
+    enabled: !loading && !!detail && hasSeasons && focusZone === "actions",
     onSelect: (i) => {
       if (i === 0) void onContinue();
       else void onPlayFromStart();
@@ -237,7 +237,22 @@ export default function SeriesDetailScreen() {
     return String(detail.year);
   }, [detail?.year]);
 
-  if (loading || !detail) return <LoadingState />;
+  if (loading) return <LoadingState />;
+
+  if (!detail) {
+    return (
+      <Screen>
+        <View style={styles.root}>
+          <View style={styles.topBar}>
+            <View style={styles.headerText}>
+              <Text style={styles.title}>{t("series.empty")}</Text>
+            </View>
+            <TvBackButton onPress={goBack} />
+          </View>
+        </View>
+      </Screen>
+    );
+  }
 
   const actionsSelected = focusZone === "actions";
   const seasonsSelected = focusZone === "seasons";
@@ -255,28 +270,30 @@ export default function SeriesDetailScreen() {
           <TvBackButton onPress={goBack} />
         </View>
 
-        <View style={styles.actions}>
-          <Pressable
-            focusable={!TV_NAV_ENABLED}
-            onPress={() => void onContinue()}
-            style={[
-              styles.primaryBtn,
-              actionsSelected && actionIndex === 0 && styles.btnSelected,
-            ]}
-          >
-            <Text style={styles.primaryText}>{t("series.continue")}</Text>
-          </Pressable>
-          <Pressable
-            focusable={!TV_NAV_ENABLED}
-            onPress={() => void onPlayFromStart()}
-            style={[
-              styles.secondaryBtn,
-              actionsSelected && actionIndex === 1 && styles.btnSelected,
-            ]}
-          >
-            <Text style={styles.secondaryText}>{t("series.play_from_start")}</Text>
-          </Pressable>
-        </View>
+        {hasSeasons ? (
+          <View style={styles.actions}>
+            <Pressable
+              focusable={!TV_NAV_ENABLED}
+              onPress={() => void onContinue()}
+              style={[
+                styles.primaryBtn,
+                actionsSelected && actionIndex === 0 && styles.btnSelected,
+              ]}
+            >
+              <Text style={styles.primaryText}>{t("series.continue")}</Text>
+            </Pressable>
+            <Pressable
+              focusable={!TV_NAV_ENABLED}
+              onPress={() => void onPlayFromStart()}
+              style={[
+                styles.secondaryBtn,
+                actionsSelected && actionIndex === 1 && styles.btnSelected,
+              ]}
+            >
+              <Text style={styles.secondaryText}>{t("series.play_from_start")}</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {hasSeasons ? (
           <View style={styles.seasonRow}>
