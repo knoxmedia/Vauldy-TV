@@ -179,7 +179,15 @@ export default function LibraryScreen() {
           data={gridRows}
           keyExtractor={(_, rowIndex) => `row-${rowIndex}`}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={<EmptyState />}
+          ListEmptyComponent={
+            isTVLibrary ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyText}>{t("series.empty")}</Text>
+              </View>
+            ) : (
+              <EmptyState />
+            )
+          }
           removeClippedSubviews={false}
           onScrollToIndexFailed={(info) => {
             listRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true });
@@ -232,4 +240,6 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: spacing.lg, paddingBottom: 120 },
   row: { flexDirection: "row", marginBottom: GRID_ROW_GAP },
   cell: { flexShrink: 0, paddingVertical: 2 },
+  empty: { padding: 48, alignItems: "center" },
+  emptyText: { color: colors.textSecondary, fontSize: 20 },
 });
