@@ -1,4 +1,4 @@
-const TV_TYPES = new Set(["tv", "anime"]);
+const TV_TYPES = new Set(["tv", "anime", "television", "series"]);
 const MUSIC_TYPES = new Set(["music"]);
 const PHOTO_TYPES = new Set(["photo"]);
 const DOCUMENT_TYPES = new Set(["document"]);

@@ -5,13 +5,20 @@ import type {
   BrandingInfo,
   DocumentDetail,
   DocumentPreviewInfo,
+  EpisodeRow,
   HistoryItem,
   Library,
+  MediaDetail,
   MediaItem,
+  MusicTrackRow,
   PlaybackPlan,
   ReadProgress,
+  SeriesDetail,
+  SeriesPlayTarget,
+  SeriesSummary,
   SessionUserInfo,
 } from "./types";
+import { CONTINUE_WATCHING_LIBRARY_TYPES } from "@/lib/homeHistory";
 
 let onUnauthorized: (() => void) | null = null;
 
@@ -83,6 +90,11 @@ export async function fetchLibraries(): Promise<Library[]> {
   return data?.items ?? [];
 }
 
+export async function fetchLibraryTracks(libraryId: number): Promise<MusicTrackRow[]> {
+  const { data } = await api.get<{ items?: MusicTrackRow[] }>(`/api/v1/library/${libraryId}/tracks`);
+  return data?.items ?? [];
+}
+
 export async function fetchMedia(
   libraryId?: number,
   opts?: {
@@ -102,14 +114,53 @@ export async function fetchMedia(
   return data?.items ?? [];
 }
 
-export async function fetchMediaDetail(mediaId: number): Promise<MediaItem> {
-  const { data } = await api.get<MediaItem>(`/api/v1/media/${mediaId}`);
+export async function fetchMediaDetail(mediaId: number): Promise<MediaDetail> {
+  const { data } = await api.get<MediaDetail>(`/api/v1/media/${mediaId}`);
   return data;
 }
 
-export async function fetchUserHistory(limit = 24): Promise<HistoryItem[]> {
-  const { data } = await api.get<{ items?: HistoryItem[] }>("/api/v1/user/history", { params: { limit } });
-  return data?.items ?? [];
+export type MediaLyricsResponse = {
+  lrc: string;
+  source?: string;
+};
+
+export async function fetchMediaLyrics(mediaId: number): Promise<MediaLyricsResponse> {
+  const { data } = await api.get<MediaLyricsResponse>(`/api/v1/media/${mediaId}/lyrics`);
+  return data ?? { lrc: "", source: "" };
+}
+
+export function dedupeUserHistory(items: HistoryItem[]): HistoryItem[] {
+  const out: HistoryItem[] = [];
+  const seenMedia = new Set<number>();
+  const seenFile = new Set<string>();
+  for (const h of items) {
+    if (h.media_id > 0) {
+      if (seenMedia.has(h.media_id)) continue;
+      seenMedia.add(h.media_id);
+    } else if (h.file_id) {
+      if (seenFile.has(h.file_id)) continue;
+      seenFile.add(h.file_id);
+    }
+    out.push(h);
+  }
+  return out;
+}
+
+export async function fetchUserHistory(
+  limit = 24,
+  opts?: { libraryTypes?: readonly string[] },
+): Promise<HistoryItem[]> {
+  const params: Record<string, string | number> = { limit };
+  const types = opts?.libraryTypes?.map((t) => t.trim()).filter(Boolean);
+  if (types?.length) {
+    params.library_types = types.join(",");
+  }
+  const { data } = await api.get<{ items?: HistoryItem[] }>("/api/v1/user/history", { params });
+  return dedupeUserHistory(data?.items ?? []).filter((h) => h.media_id > 0);
+}
+
+export async function fetchContinueWatchingHistory(limit = 24): Promise<HistoryItem[]> {
+  return fetchUserHistory(limit, { libraryTypes: CONTINUE_WATCHING_LIBRARY_TYPES });
 }
 
 export async function fetchFavorites(): Promise<MediaItem[]> {
@@ -136,7 +187,10 @@ export async function fetchPlaybackPlan(mediaId: number): Promise<PlaybackPlan> 
 }
 
 export async function saveProgress(mediaId: number, position: number, completed = false): Promise<void> {
-  await api.post(`/api/v1/media/${mediaId}/progress`, { position, completed });
+  await api.post(`/api/v1/media/${mediaId}/progress`, {
+    position,
+    completed: completed ? 1 : 0,
+  });
 }
 
 export async function fetchDocumentDetail(mediaId: number): Promise<DocumentDetail> {
@@ -172,4 +226,24 @@ export async function playbackEnd(mediaId: number): Promise<void> {
   } catch {
     /* ignore */
   }
+}
+
+export async function fetchLibrarySeries(libraryId: number): Promise<SeriesSummary[]> {
+  const { data } = await api.get<{ items?: SeriesSummary[] }>(`/api/v1/library/${libraryId}/series`);
+  return data?.items ?? [];
+}
+
+export async function fetchSeries(seriesId: number): Promise<SeriesDetail> {
+  const { data } = await api.get<SeriesDetail>(`/api/v1/series/${seriesId}`);
+  return data;
+}
+
+export async function fetchSeasonEpisodes(seasonId: number): Promise<EpisodeRow[]> {
+  const { data } = await api.get<{ items?: EpisodeRow[] }>(`/api/v1/season/${seasonId}/episodes`);
+  return data?.items ?? [];
+}
+
+export async function fetchSeriesPlayTarget(seriesId: number): Promise<SeriesPlayTarget> {
+  const { data } = await api.get<SeriesPlayTarget>(`/api/v1/series/${seriesId}/play-target`);
+  return data;
 }
