@@ -61,6 +61,10 @@ export default function FavoritesScreen() {
   const listRefRef = useRef(listRef);
   listRefRef.current = listRef;
 
+  // Render-confirmed ref — updated ONLY by React render.
+  const focusIndexConfirmed = useRef(focusIndex);
+  focusIndexConfirmed.current = focusIndex;
+
   const scrollToItem = useCallback((index: number) => {
     const row = Math.floor(index / GRID_COLUMNS);
     listRefRef.current.current?.scrollToIndex({ index: row, animated: true, viewPosition: 0.35 });
@@ -88,7 +92,7 @@ export default function FavoritesScreen() {
       const maxRow = Math.floor((count - 1) / columns);
 
       if (type === "select") {
-        const item = itemsRef.current[cur];
+        const item = itemsRef.current[focusIndexConfirmed.current];
         if (item) routerRef.current.push(`/media/${item.id}`);
         return true;
       }
@@ -147,6 +151,7 @@ export default function FavoritesScreen() {
         ref={listRef}
         data={gridRows}
         keyExtractor={(_, rowIndex) => `row-${rowIndex}`}
+        extraData={focusIndex}
         contentContainerStyle={styles.list}
         ListEmptyComponent={<EmptyState />}
         removeClippedSubviews={false}

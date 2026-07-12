@@ -114,13 +114,12 @@ export const useMusicPlayerStore = create<MusicPlayerState>((set, get) => ({
     const q = queue && queue.length > 0 ? queue : [track];
     const filtered = q.filter((item) => item.mediaId > 0);
     if (filtered.length === 0) return;
-    const idx =
-      index != null && index >= 0
-        ? index
-        : Math.max(
-            0,
-            filtered.findIndex((item) => item.mediaId === track.mediaId),
-          );
+    // Always resolve index by mediaId in the filtered array to avoid
+    // off-by-one when filtering removed earlier entries.
+    const idx = Math.max(
+      0,
+      filtered.findIndex((item) => item.mediaId === track.mediaId),
+    );
     const safeIdx = Math.max(0, Math.min(idx, filtered.length - 1));
     const current = filtered[safeIdx]!;
     set({

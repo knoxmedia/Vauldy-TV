@@ -137,10 +137,12 @@ export default function FloatingMusicBar() {
       setZone("content");
     },
     onExitUp: () => {
-      setLyricsExpanded(!lyricsExpanded);
+      setLyricsExpanded(false);
+      setZone("content");
     },
     onExitDown: () => {
-      setLyricsExpanded(!lyricsExpanded);
+      setLyricsExpanded(false);
+      setZone("content");
     },
   });
 

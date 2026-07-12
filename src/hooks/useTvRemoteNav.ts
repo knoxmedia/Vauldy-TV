@@ -60,6 +60,10 @@ export function useTvRemoteNav(opts: TvRemoteNavOpts) {
   const [index, setIndex] = useState(() => clampIndex(initialIndex, count));
   const indexRef = useRef(index);
   indexRef.current = index;
+  // Render-confirmed ref — updated ONLY by React render.
+  // onSelect reads this so it always matches the visual highlight.
+  const indexConfirmed = useRef(index);
+  indexConfirmed.current = index;
 
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -121,7 +125,8 @@ export function useTvRemoteNav(opts: TvRemoteNavOpts) {
 
       if (type === "select") {
         consumeTvKeyEvent(evt);
-        onSelectRef.current?.(current);
+        // Use confirmed ref so selected item matches visual highlight.
+        onSelectRef.current?.(indexConfirmed.current);
         return;
       }
 

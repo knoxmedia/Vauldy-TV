@@ -84,6 +84,13 @@ export default function HomeScreen() {
   const recentShelfIndexRef = useRef(recentShelfIndex);
   recentShelfIndexRef.current = recentShelfIndex;
 
+  // Render-confirmed refs — updated ONLY by React render, NOT by key handlers.
+  // Select handler and data check read these so they always match the visual highlight.
+  const activeShelfConfirmed = useRef(activeShelf);
+  activeShelfConfirmed.current = activeShelf;
+  const itemIndexConfirmed = useRef(itemIndex);
+  itemIndexConfirmed.current = itemIndex;
+
   const load = useCallback(async () => {
     const [libR, histR] = await Promise.allSettled([
       fetchLibraries(),
@@ -129,39 +136,47 @@ export default function HomeScreen() {
       const type = evt.eventType;
       if (type === "focus" || type === "blur") return false;
 
-      const shelf = activeShelfRef.current;
+      // Use confirmed refs for data check + select (matches visual).
+      // Use immediate refs for direction key bound checking.
       const hasHist = hasHistoryRef.current;
       const hasRec = hasRecentRef.current;
       const libShelfIdx = librariesShelfIndexRef.current;
       const recShelfIdx = recentShelfIndexRef.current;
       const shelfCount = (hasHist ? 1 : 0) + 1 + (hasRec ? 1 : 0);
 
+      // Data check uses confirmed shelf (matches visual).
+      const visShelf = activeShelfConfirmed.current;
       let data: readonly unknown[];
-      if (hasHist && shelf === 0) data = historyRef.current;
-      else if (shelf === libShelfIdx) data = librariesRef.current;
-      else if (hasRec && shelf === recShelfIdx) data = recentRef.current;
+      if (hasHist && visShelf === 0) data = historyRef.current;
+      else if (visShelf === libShelfIdx) data = librariesRef.current;
+      else if (hasRec && visShelf === recShelfIdx) data = recentRef.current;
       else data = [];
 
       if (data.length === 0) return false;
 
       if (type === "select") {
-        const idx = itemIndexRef.current;
-        if (hasHist && shelf === 0) {
-          const h = historyRef.current[idx] as HistoryItem | undefined;
+        // Select uses confirmed refs — always matches what's visually highlighted.
+        const selectShelf = activeShelfConfirmed.current;
+        const selectIdx = itemIndexConfirmed.current;
+        if (hasHist && selectShelf === 0) {
+          const h = historyRef.current[selectIdx] as HistoryItem | undefined;
           if (h) routerRef.current.push(`/player/${h.media_id}`);
-        } else if (shelf === libShelfIdx) {
-          const lib = librariesRef.current[idx] as Library | undefined;
+        } else if (selectShelf === libShelfIdx) {
+          const lib = librariesRef.current[selectIdx] as Library | undefined;
           if (lib) {
             useMusicPlayerStore.getState().setLyricsExpanded(false);
             setZoneRef.current("content");
             routerRef.current.push(`/library/${lib.id}`);
           }
-        } else if (hasRec && shelf === recShelfIdx) {
-          const item = recentRef.current[idx] as MediaItem | undefined;
+        } else if (hasRec && selectShelf === recShelfIdx) {
+          const item = recentRef.current[selectIdx] as MediaItem | undefined;
           if (item) routerRef.current.push(`/media/${item.id}`);
         }
         return true;
       }
+
+      // Direction keys use immediate refs for responsive bound checking.
+      const shelf = activeShelfRef.current;
 
       if (type === "left") {
         if (itemIndexRef.current > 0) {
@@ -212,18 +227,6 @@ export default function HomeScreen() {
       return false;
     }, []),
   );
-
-  // After data loads, ensure focus stays on the libraries shelf.
-  useEffect(() => {
-    if (loading) return;
-    const libShelfIdx = librariesShelfIndexRef.current;
-    if (activeShelfRef.current !== libShelfIdx) {
-      activeShelfRef.current = libShelfIdx;
-      itemIndexRef.current = 0;
-      setActiveShelf(libShelfIdx);
-      setItemIndex(0);
-    }
-  }, [loading, history.length]);
 
   if (loading) return <LoadingState label={t("common.loading")} />;
 

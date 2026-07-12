@@ -62,6 +62,7 @@ export default function HorizontalShelf<T>({
           data={data as T[]}
           keyExtractor={keyExtractor}
           renderItem={renderListItem}
+          extraData={focusIndex}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.row}
           removeClippedSubviews={false}

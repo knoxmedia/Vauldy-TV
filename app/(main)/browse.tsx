@@ -33,6 +33,10 @@ export default function BrowseScreen() {
   const setZoneRef = useRef(setZone);
   setZoneRef.current = setZone;
 
+  // Render-confirmed ref — updated ONLY by React render.
+  const itemIndexConfirmed = useRef(itemIndex);
+  itemIndexConfirmed.current = itemIndex;
+
   useFocusEffect(
     useCallback(() => {
       setZone("content");
@@ -57,7 +61,7 @@ export default function BrowseScreen() {
       if (count === 0) return false;
 
       if (type === "select") {
-        const lib = librariesRef.current[itemIndexRef.current];
+        const lib = librariesRef.current[itemIndexConfirmed.current];
         if (lib) {
           useMusicPlayerStore.getState().setLyricsExpanded(false);
           setZoneRef.current("content");

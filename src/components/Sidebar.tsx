@@ -32,12 +32,11 @@ export default function Sidebar() {
   const sidebarIndex = useTvFocusStore((s) => s.sidebarIndex);
 
   const routeIndex = routeActiveIndex(segments);
-  const selectedIndex = zone === "sidebar" ? sidebarIndex : -1;
+  const inSidebar = zone === "sidebar";
 
   const navigateTo = (i: number) => {
     const item = NAV[i];
     if (!item) return;
-    setZone("content");
     router.replace(item.href);
   };
 
@@ -46,8 +45,9 @@ export default function Sidebar() {
       <Text style={styles.brand}>{appName}</Text>
       <View style={styles.nav}>
         {NAV.map((item, index) => {
-          const routeActive = routeIndex === index;
-          const selected = selectedIndex === index;
+          // When in sidebar zone, highlight follows the D-pad focus.
+          // Otherwise highlight follows the active route.
+          const active = inSidebar ? sidebarIndex === index : routeIndex === index;
           return (
             <Pressable
               key={String(item.href)}
@@ -55,11 +55,10 @@ export default function Sidebar() {
               onPress={() => navigateTo(index)}
               style={[
                 styles.navItem,
-                routeActive ? styles.navItemActive : undefined,
-                selected ? styles.navItemSelected : undefined,
+                active ? styles.navItemActive : undefined,
               ]}
             >
-              <Text style={[styles.navText, routeActive || selected ? styles.navTextActive : undefined]}>
+              <Text style={[styles.navText, active ? styles.navTextActive : undefined]}>
                 {t(item.labelKey)}
               </Text>
             </Pressable>
@@ -94,8 +93,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "transparent",
   },
-  navItemActive: { backgroundColor: "rgba(0,164,220,0.15)" },
-  navItemSelected: { borderColor: colors.brand, backgroundColor: "rgba(0,164,220,0.22)" },
+  navItemActive: { backgroundColor: "rgba(0,164,220,0.22)", borderColor: colors.brand },
   navText: { color: colors.textSecondary, fontSize: 20, fontWeight: "600" },
   navTextActive: { color: colors.brand },
 });

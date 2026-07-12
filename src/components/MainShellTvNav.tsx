@@ -1,6 +1,8 @@
 import { useRouter, useSegments, type Href } from "expo-router";
 import { useEffect, useRef } from "react";
+import { Alert, BackHandler } from "react-native";
 import { consumeTvKeyEvent, registerPriorityTvKeyHandler, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { t } from "@/i18n";
 import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
 import { useTvFocusStore } from "@/store/tvFocus";
 
@@ -54,7 +56,6 @@ export default function MainShellTvNav() {
           consumeTvKeyEvent(evt);
           const item = NAV[cur];
           if (!item) return;
-          state.setZone("content");
           routerRef.current.replace(item.href);
           return;
         }
@@ -84,6 +85,33 @@ export default function MainShellTvNav() {
     };
 
     return registerPriorityTvKeyHandler(handler);
+  }, []);
+
+  // Hardware back button: move focus from content → sidebar (or back → content).
+  // When already in the sidebar, show an exit confirmation dialog.
+  useEffect(() => {
+    if (!TV_NAV_ENABLED) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      const state = useTvFocusStore.getState();
+      if (segmentsRef.current[0] !== "(main)") return false;
+      if (state.zone === "back") {
+        state.setZone("content");
+        return true;
+      }
+      if (state.zone === "content") {
+        state.setZone("sidebar");
+        return true;
+      }
+      if (state.zone === "sidebar") {
+        Alert.alert(t("app.exit_title"), t("app.exit_message"), [
+          { text: t("common.cancel"), style: "cancel" },
+          { text: t("app.exit_confirm"), style: "destructive", onPress: () => BackHandler.exitApp() },
+        ]);
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
   }, []);
 
   return null;
