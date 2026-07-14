@@ -112,6 +112,8 @@ export function useTvRemoteNav(opts: TvRemoteNavOpts) {
 
   useEffect(() => {
     const handler = (evt: TvKeyEvent) => {
+      // Guard: skip if a priority handler (MainShellTvNav) already consumed the event.
+      if (evt._consumed) return;
       // Check enabled fresh on every event via refs.
       if (!enabledRef.current) return;
       if (countRef.current <= 0) return;

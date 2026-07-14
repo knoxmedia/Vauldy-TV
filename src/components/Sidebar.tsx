@@ -1,4 +1,5 @@
 import { useRouter, useSegments, type Href } from "expo-router";
+import { useEffect, useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, radius, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
@@ -28,11 +29,26 @@ export default function Sidebar() {
   const segments = useSegments();
   const appName = useConfigStore((s) => s.appName);
   const zone = useTvFocusStore((s) => s.zone);
-  const setZone = useTvFocusStore((s) => s.setZone);
   const sidebarIndex = useTvFocusStore((s) => s.sidebarIndex);
+  const setSidebarIndex = useTvFocusStore((s) => s.setSidebarIndex);
 
   const routeIndex = routeActiveIndex(segments);
   const inSidebar = zone === "sidebar";
+
+  // Track previous zone to detect zone entry transitions.
+  const prevZone = useRef(zone);
+  useEffect(() => {
+    prevZone.current = zone;
+  });
+
+  // When entering sidebar zone, sync sidebarIndex to the current route.
+  // Without this, the D-pad position from the last sidebar visit is kept,
+  // which may point to a different tab than the user is actually on.
+  useEffect(() => {
+    if (zone === "sidebar" && prevZone.current !== "sidebar") {
+      setSidebarIndex(routeIndex);
+    }
+  }, [zone, routeIndex, setSidebarIndex]);
 
   const navigateTo = (i: number) => {
     const item = NAV[i];
@@ -52,7 +68,7 @@ export default function Sidebar() {
             <Pressable
               key={String(item.href)}
               focusable={!TV_NAV_ENABLED}
-              onPress={() => navigateTo(index)}
+              onPress={TV_NAV_ENABLED ? undefined : () => navigateTo(index)}
               style={[
                 styles.navItem,
                 active ? styles.navItemActive : undefined,

@@ -1,6 +1,7 @@
 import { useRouter, useSegments, type Href } from "expo-router";
 import { useEffect, useRef } from "react";
 import { Alert, BackHandler } from "react-native";
+import { useIsFocused } from "@react-navigation/native";
 import { consumeTvKeyEvent, registerPriorityTvKeyHandler, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { t } from "@/i18n";
 import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
@@ -29,6 +30,10 @@ export default function MainShellTvNav() {
   const segments = useSegments();
   const setSidebarIndex = useTvFocusStore((s) => s.setSidebarIndex);
 
+  const isShellFocused = useIsFocused();
+  const isShellFocusedRef = useRef(isShellFocused);
+  isShellFocusedRef.current = isShellFocused;
+
   const segmentsRef = useRef(segments);
   segmentsRef.current = segments;
   const routerRef = useRef(router);
@@ -43,6 +48,10 @@ export default function MainShellTvNav() {
     if (!TV_NAV_ENABLED) return;
 
     const handler = (evt: TvKeyEvent) => {
+      // Only process events when the main shell is actually focused (visible).
+      // When a detail screen is pushed on the stack, skip entirely so the
+      // detail screen's own handlers (useTvRemoteNav) receive the event.
+      if (!isShellFocusedRef.current) return;
       if (segmentsRef.current[0] !== "(main)") return;
 
       const state = useTvFocusStore.getState();

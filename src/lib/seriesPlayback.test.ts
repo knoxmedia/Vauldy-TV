@@ -36,7 +36,7 @@ describe("primaryMediaIdsFromEpisodes", () => {
 });
 
 describe("resolveNextSeriesMedia", () => {
-  const session = { seriesId: 5, order: [10, 20, 30] };
+  const session = { seriesId: 5, order: [10, 20, 30], episodes: {} };
 
   it("returns next by index", () => {
     expect(resolveNextSeriesMedia(session, 10, 0)).toEqual({ mediaId: 20, index: 1 });
@@ -48,5 +48,15 @@ describe("resolveNextSeriesMedia", () => {
 
   it("finds by media id when index wrong", () => {
     expect(resolveNextSeriesMedia(session, 20, null)).toEqual({ mediaId: 30, index: 2 });
+  });
+
+  it("includes episode meta when available", () => {
+    const s = { seriesId: 1, order: [10, 20], episodes: { 20: { seasonId: 3, episodeNum: 5 } } };
+    expect(resolveNextSeriesMedia(s, 10, 0)).toEqual({
+      mediaId: 20,
+      index: 1,
+      seasonId: 3,
+      episodeNum: 5,
+    });
   });
 });

@@ -6,7 +6,7 @@ import { colors, radius, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
 import { formatDuration } from "@/lib/mediaUrl";
 import { trackRowsToMusicTracks } from "@/lib/musicQueue";
-import { useTvRemoteNav } from "@/hooks/useTvRemoteNav";
+import { TV_NAV_ENABLED, useTvRemoteNav } from "@/hooks/useTvRemoteNav";
 import { useMusicPlayerStore } from "@/store/musicPlayer";
 import { useTvFocusStore } from "@/store/tvFocus";
 
@@ -85,7 +85,7 @@ export default function MusicTrackList({ tracks, onExitLeft }: Props) {
     return (
       <Pressable
         focusable={false}
-        onPress={() => playAt(item.media_id)}
+        onPress={TV_NAV_ENABLED ? undefined : () => playAt(item.media_id)}
         style={[styles.row, isCurrent && styles.rowActive, selected && styles.rowSelected]}
       >
         <View style={styles.colIndex}>

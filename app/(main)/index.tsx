@@ -160,7 +160,10 @@ export default function HomeScreen() {
         const selectIdx = itemIndexConfirmed.current;
         if (hasHist && selectShelf === 0) {
           const h = historyRef.current[selectIdx] as HistoryItem | undefined;
-          if (h) routerRef.current.push(`/player/${h.media_id}`);
+          if (h) {
+            const tParam = h.position > 0 ? `&t=${Math.floor(h.position)}` : "";
+            routerRef.current.push(`/player/${h.media_id}${tParam}`);
+          }
         } else if (selectShelf === libShelfIdx) {
           const lib = librariesRef.current[selectIdx] as Library | undefined;
           if (lib) {
@@ -253,7 +256,10 @@ export default function HomeScreen() {
                 item={historyToMediaItem(h)}
                 aspect="landscape"
                 progress={h.duration > 0 ? (h.position / h.duration) * 100 : 0}
-                onPress={() => router.push(`/player/${h.media_id}`)}
+                onPress={() => {
+                  const tParam = h.position > 0 ? `&t=${Math.floor(h.position)}` : "";
+                  router.push(`/player/${h.media_id}${tParam}`);
+                }}
               />
             )}
           />

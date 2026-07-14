@@ -3,10 +3,12 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import {
   fetchMedia,
   fetchMediaDetail,
   fetchPlaybackPlan,
+  fetchSeasonEpisodes,
   playbackEnd,
   playbackStart,
   saveProgress,
@@ -22,7 +24,7 @@ import { colors } from "@/constants/theme";
 import { useTvControlsVisibility } from "@/hooks/useTvControlsVisibility";
 import { t } from "@/i18n";
 import { parseMusicTags } from "@/lib/musicTags";
-import { albumArtworkSrc, mediaPlaySrc, mediaPosterSrc, musicMediaPosterSrc, withAccessToken } from "@/lib/mediaUrl";
+import { albumArtworkSrc, mediaPlaySrc, mediaPosterSrc, musicMediaPosterSrc, normalizeListPosterUrl, withAccessToken } from "@/lib/mediaUrl";
 import { resolveNextSeriesMedia } from "@/lib/seriesPlayback";
 import { useMusicPlayerStore } from "@/store/musicPlayer";
 import { useSeriesPlayStore } from "@/store/seriesPlay";
@@ -75,10 +77,17 @@ export default function PlayerScreen() {
   const [nextEpisode, setNextEpisode] = useState<{ mediaId: number; index: number } | null>(null);
   const [nextCountdown, setNextCountdown] = useState(0);
   const [nextFocus, setNextFocus] = useState(0);
+  const [nextEpisodeMeta, setNextEpisodeMeta] = useState<{
+    title: string;
+    posterUrl: string;
+    episodeNum: number;
+  } | null>(null);
   const nextEpisodeRef = useRef(nextEpisode);
   const nextFocusRef = useRef(nextFocus);
   nextEpisodeRef.current = nextEpisode;
   nextFocusRef.current = nextFocus;
+  const keepAwakeRef = useRef(false);
+  const nearEndTriggeredRef = useRef(false);
 
   const setControlsVisibleSafe = useCallback((v: boolean) => {
     controlsVisibleRef.current = v;
@@ -117,9 +126,11 @@ export default function PlayerScreen() {
 
   useEffect(() => {
     didResumeSeek.current = false;
+    nearEndTriggeredRef.current = false;
     setNextEpisode(null);
     setNextCountdown(0);
     setNextFocus(0);
+    setNextEpisodeMeta(null);
     lastPosition.current = 0;
     lastSavedPosition.current = 0;
 
@@ -205,6 +216,10 @@ export default function PlayerScreen() {
 
     return () => {
       mounted = false;
+      if (keepAwakeRef.current) {
+        deactivateKeepAwake("video-player").catch(() => {});
+        keepAwakeRef.current = false;
+      }
       if (isAudioRef.current) {
         return;
       }
@@ -227,9 +242,11 @@ export default function PlayerScreen() {
   }, [isAudio, mediaId]);
 
   const cancelNext = useCallback(() => {
+    nearEndTriggeredRef.current = false;
     setNextEpisode(null);
     setNextCountdown(0);
     setNextFocus(0);
+    setNextEpisodeMeta(null);
   }, []);
 
   const goNextEpisode = useCallback(() => {
@@ -287,6 +304,54 @@ export default function PlayerScreen() {
     setPosition(pos);
     setDuration((status.durationMillis ?? 0) / 1000);
     setPlaying(status.isPlaying);
+    // Keep screen awake during video playback (not audio).
+    if (!isAudioRef.current) {
+      if (status.isPlaying && !keepAwakeRef.current) {
+        keepAwakeRef.current = true;
+        activateKeepAwakeAsync("video-player").catch(() => {});
+      } else if (!status.isPlaying && keepAwakeRef.current) {
+        keepAwakeRef.current = false;
+        deactivateKeepAwake("video-player").catch(() => {});
+      }
+    }
+    // Near-end detection: pre-fetch next episode metadata when approaching end.
+    const dur = (status.durationMillis ?? 0) / 1000;
+    const nearEndThreshold = dur > 30 ? 30 : dur * 0.15;
+    if (
+      !nearEndTriggeredRef.current &&
+      dur > 0 &&
+      dur - pos <= nearEndThreshold &&
+      series_id &&
+      !nextEpisode
+    ) {
+      nearEndTriggeredRef.current = true;
+      const sid = Number(series_id);
+      const session = useSeriesPlayStore.getState().session;
+      if (session && sid === session.seriesId) {
+        const idx = index != null && index !== "" ? Number(index) : NaN;
+        const next = resolveNextSeriesMedia(session, mediaId, Number.isFinite(idx) ? idx : null);
+        if (next?.seasonId != null) {
+          fetchSeasonEpisodes(next.seasonId)
+            .then((items) => {
+              const sorted = [...items].sort((a, b) => a.episode_num - b.episode_num);
+              const nextEp = sorted.find((ep) => ep.episode_num === next.episodeNum);
+              if (!nextEp) return;
+              const versions = (nextEp.versions ?? [])
+                .slice()
+                .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+              const v = versions[0];
+              const rawPoster = v?.poster_url;
+              const posterUrl = rawPoster ? withAccessToken(normalizeListPosterUrl(rawPoster)) : "";
+              setNextEpisodeMeta({
+                title: nextEp.title?.trim() || `Episode ${nextEp.episode_num}`,
+                posterUrl,
+                episodeNum: nextEp.episode_num,
+              });
+            })
+            .catch(() => {});
+        }
+      }
+    }
     if (status.didJustFinish) {
       persistProgress(true);
       const sid = series_id ? Number(series_id) : NaN;
@@ -296,8 +361,13 @@ export default function PlayerScreen() {
         const next = resolveNextSeriesMedia(session, mediaId, Number.isFinite(idx) ? idx : null);
         if (next) {
           setNextEpisode(next);
-          setNextCountdown(10);
           setNextFocus(0);
+          // Shorter countdown when metadata is already pre-fetched.
+          if (nextEpisodeMeta) {
+            setNextCountdown(5);
+          } else {
+            setNextCountdown(10);
+          }
           setControlsVisibleSafe(false);
           return;
         }
@@ -399,12 +469,12 @@ export default function PlayerScreen() {
       if (!controlsVisibleRef.current) {
         if (type === "left" || type === "longLeft") {
           showControls();
-          void seekBy(type === "longLeft" ? -30 : -10);
+          void seekBy(type === "longLeft" ? -60 : -30);
           return;
         }
         if (type === "right" || type === "longRight") {
           showControls();
-          void seekBy(type === "longRight" ? 30 : 10);
+          void seekBy(type === "longRight" ? 60 : 30);
           return;
         }
         if (type === "up" || type === "down" || type === "select" || type === "menu") {
@@ -523,6 +593,9 @@ export default function PlayerScreen() {
       <NextEpisodeOverlay
         visible={overlayVisible}
         secondsLeft={nextCountdown}
+        episodeTitle={nextEpisodeMeta?.title}
+        episodeNum={nextEpisodeMeta?.episodeNum}
+        posterUrl={nextEpisodeMeta?.posterUrl}
         focusIndex={nextFocus}
         onPlayNow={goNextEpisode}
         onCancel={cancelNext}

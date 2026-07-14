@@ -1,10 +1,15 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import { colors, radius, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
 
 type Props = {
   visible: boolean;
   secondsLeft: number;
+  episodeTitle?: string;
+  episodeNum?: number;
+  posterUrl?: string;
   onPlayNow: () => void;
   onCancel: () => void;
   /** 0 = play now, 1 = cancel */
@@ -14,17 +19,53 @@ type Props = {
 export default function NextEpisodeOverlay({
   visible,
   secondsLeft,
+  episodeTitle,
+  episodeNum,
+  posterUrl,
   onPlayNow,
   onCancel,
   focusIndex = 0,
 }: Props) {
   if (!visible) return null;
 
+  const showPoster = Boolean(posterUrl);
+
   return (
     <View style={styles.overlay} pointerEvents="box-none">
       <View style={styles.card}>
-        <Text style={styles.title}>{t("series.next_episode")}</Text>
-        <Text style={styles.subtitle}>{t("series.next_episode_in", { n: secondsLeft })}</Text>
+        <View style={styles.cardRow}>
+          {/* Poster thumbnail */}
+          <View style={styles.posterWrap}>
+            {showPoster ? (
+              <Image
+                source={{ uri: posterUrl! }}
+                style={styles.poster}
+                contentFit="cover"
+                transition={200}
+              />
+            ) : (
+              <View style={[styles.poster, styles.posterPlaceholder]}>
+                <Ionicons name="film-outline" size={28} color={colors.textMuted} />
+              </View>
+            )}
+          </View>
+          {/* Text content */}
+          <View style={styles.textCol}>
+            {episodeNum ? (
+              <Text style={styles.epNumText}>E{episodeNum}</Text>
+            ) : (
+              <Text style={styles.epNumText}>{t("series.next_episode")}</Text>
+            )}
+            {episodeTitle ? (
+              <Text style={styles.epTitle} numberOfLines={2}>
+                {episodeTitle}
+              </Text>
+            ) : null}
+            <Text style={styles.subtitle}>
+              {t("series.next_episode_in", { n: secondsLeft })}
+            </Text>
+          </View>
+        </View>
         <View style={styles.actions}>
           <Pressable
             focusable={false}
@@ -49,55 +90,85 @@ export default function NextEpisodeOverlay({
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.overlay,
-    alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-end",
+    alignItems: "flex-end",
     zIndex: 40,
+    padding: spacing.lg,
   },
   card: {
     backgroundColor: colors.surfaceElevated,
     borderRadius: radius.lg,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.lg,
-    minWidth: 420,
-    maxWidth: "80%",
-    alignItems: "center",
-    gap: spacing.md,
+    padding: spacing.md,
+    maxWidth: 480,
+    minWidth: 360,
     borderWidth: 1,
     borderColor: colors.borderLight,
+    gap: spacing.sm,
   },
-  title: {
-    color: colors.text,
-    fontSize: 28,
+  cardRow: {
+    flexDirection: "row",
+    gap: spacing.md,
+    alignItems: "center",
+  },
+  posterWrap: {
+    width: 100,
+    height: 152,
+    borderRadius: radius.sm,
+    overflow: "hidden",
+    flexShrink: 0,
+  },
+  poster: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: colors.surface,
+  },
+  posterPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  textCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  epNumText: {
+    color: colors.brand,
+    fontSize: 14,
     fontWeight: "700",
+  },
+  epTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "600",
   },
   subtitle: {
     color: colors.textSecondary,
-    fontSize: 18,
-    textAlign: "center",
+    fontSize: 14,
+    marginTop: 4,
   },
   actions: {
     flexDirection: "row",
-    gap: spacing.md,
-    marginTop: spacing.sm,
+    gap: spacing.sm,
+    marginTop: spacing.xs,
   },
   btn: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 14,
+    flex: 1,
+    paddingVertical: 12,
     borderRadius: radius.md,
-    backgroundColor: colors.overlay,
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 2,
     borderColor: "transparent",
-    minWidth: 140,
     alignItems: "center",
   },
   btnSelected: {
     borderColor: colors.brand,
-    backgroundColor: colors.accentBgStrong,
+    backgroundColor: "rgba(0,164,220,0.15)",
   },
   btnText: {
     color: colors.text,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
   },
 });

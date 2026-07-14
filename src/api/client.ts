@@ -193,6 +193,16 @@ export async function saveProgress(mediaId: number, position: number, completed 
   });
 }
 
+export async function fetchMediaProgress(mediaId: number): Promise<{ position: number; completed?: number } | null> {
+  try {
+    const { data } = await api.get<{ position?: number; completed?: number }>(`/api/v1/media/${mediaId}/progress`);
+    if (data?.position == null || data.position <= 0) return null;
+    return { position: data.position, completed: data.completed };
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchDocumentDetail(mediaId: number): Promise<DocumentDetail> {
   const { data } = await api.get<DocumentDetail>(`/api/v1/media/${mediaId}/document`);
   return data;

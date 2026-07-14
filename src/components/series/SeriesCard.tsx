@@ -49,7 +49,7 @@ export default function SeriesCard({ series, onPress, tvSelected }: Props) {
   return (
     <View style={styles.cardGrid}>
       {useRemoteNav ? (
-        <Pressable focusable={false} onPress={onPress} style={styles.posterFocus}>
+        <Pressable focusable={false} style={styles.posterFocus}>
           {tvSelected ? <View style={[styles.focusRing, styles.posterFocusRing]} pointerEvents="none" /> : null}
           {posterBody}
         </Pressable>

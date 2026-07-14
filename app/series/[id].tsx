@@ -2,6 +2,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import {
   fetchSeasonEpisodes,
   fetchSeries,
@@ -14,6 +16,7 @@ import EpisodeList from "@/components/series/EpisodeList";
 import { colors, radius, spacing } from "@/constants/theme";
 import { TV_NAV_ENABLED, useTvRemoteNav } from "@/hooks/useTvRemoteNav";
 import { t } from "@/i18n";
+import { normalizeListPosterUrl, withAccessToken } from "@/lib/mediaUrl";
 import {
   fetchSeriesEpisodeMediaOrder,
   pickPrimaryEpisodeMediaId,
@@ -31,8 +34,8 @@ async function startSeriesPlayback(opts: {
   positionSec?: number;
   router: ReturnType<typeof useRouter>;
 }) {
-  const order = await fetchSeriesEpisodeMediaOrder(opts.seasons);
-  useSeriesPlayStore.getState().setSession(opts.seriesId, order);
+  const { order, episodes } = await fetchSeriesEpisodeMediaOrder(opts.seasons);
+  useSeriesPlayStore.getState().setSession(opts.seriesId, order, episodes);
   const index = opts.indexInOrder ?? Math.max(0, order.indexOf(opts.mediaId));
   const tParam =
     opts.positionSec && opts.positionSec > 0 ? `&t=${Math.floor(opts.positionSec)}` : "";
@@ -144,10 +147,10 @@ export default function SeriesDetailScreen() {
   }, [playTarget, router, seasons, seriesId]);
 
   const onPlayFromStart = useCallback(async () => {
-    const order = await fetchSeriesEpisodeMediaOrder(seasons);
+    const { order, episodes } = await fetchSeriesEpisodeMediaOrder(seasons);
     if (order.length === 0) return;
     const mediaId = order[0]!;
-    useSeriesPlayStore.getState().setSession(seriesId, order);
+    useSeriesPlayStore.getState().setSession(seriesId, order, episodes);
     router.push(`/player/${mediaId}?series_id=${seriesId}&index=0`);
   }, [router, seasons, seriesId]);
 
@@ -237,6 +240,24 @@ export default function SeriesDetailScreen() {
     return String(detail.year);
   }, [detail?.year]);
 
+  const heroPosterUrl = useMemo(() => {
+    if (!detail) return "";
+    const metaJson = (() => { try { return JSON.parse(detail.meta_json ?? "{}"); } catch { return {}; } })();
+    const scrape = metaJson?.scrape ?? {};
+    const metaPoster = normalizeListPosterUrl(String(scrape?.poster ?? scrape?.series_poster ?? ""));
+    const listPoster = normalizeListPosterUrl(detail.poster_url ?? detail.poster ?? "");
+    const raw = metaPoster || listPoster;
+    return raw ? withAccessToken(raw) : "";
+  }, [detail]);
+
+  const heroBackdropUrl = useMemo(() => {
+    if (!detail) return "";
+    const metaJson = (() => { try { return JSON.parse(detail.meta_json ?? "{}"); } catch { return {}; } })();
+    const scrape = metaJson?.scrape ?? {};
+    const raw = normalizeListPosterUrl(String(scrape?.backdrop ?? scrape?.series_backdrop ?? ""));
+    return raw ? withAccessToken(raw) : "";
+  }, [detail]);
+
   if (loading) return <LoadingState />;
 
   if (!detail) {
@@ -260,14 +281,44 @@ export default function SeriesDetailScreen() {
   return (
     <Screen>
       <View style={styles.root}>
-        <View style={styles.topBar}>
-          <View style={styles.headerText}>
-            <Text style={styles.title} numberOfLines={2}>
-              {detail.title}
-            </Text>
-            {yearText ? <Text style={styles.year}>{yearText}</Text> : null}
+        {/* Hero section with backdrop + poster */}
+        {heroBackdropUrl ? (
+          <View style={styles.heroBanner}>
+            <Image
+              source={{ uri: heroBackdropUrl }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              transition={300}
+            />
+            <View style={styles.heroOverlay} />
           </View>
-          <TvBackButton onPress={goBack} />
+        ) : null}
+        <View style={styles.heroSection}>
+          <View style={styles.posterCol}>
+            {heroPosterUrl ? (
+              <Image
+                source={{ uri: heroPosterUrl }}
+                style={styles.heroPoster}
+                contentFit="cover"
+                transition={300}
+              />
+            ) : (
+              <View style={[styles.heroPoster, styles.heroPosterPlaceholder]}>
+                <Ionicons name="film-outline" size={40} color={colors.textMuted} />
+              </View>
+            )}
+          </View>
+          <View style={styles.heroMeta}>
+            <View style={styles.topBar}>
+              <View style={styles.headerText}>
+                <Text style={styles.title} numberOfLines={2}>
+                  {detail.title}
+                </Text>
+                {yearText ? <Text style={styles.year}>{yearText}</Text> : null}
+              </View>
+              <TvBackButton onPress={goBack} />
+            </View>
+          </View>
         </View>
 
         {hasSeasons ? (
@@ -436,5 +487,43 @@ const styles = StyleSheet.create({
   listWrap: {
     flex: 1,
     minHeight: 0,
+  },
+  heroBanner: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 240,
+    zIndex: 0,
+  },
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  heroSection: {
+    flexDirection: "row",
+    gap: spacing.lg,
+    marginBottom: spacing.lg,
+    zIndex: 1,
+  },
+  posterCol: {
+    flexShrink: 0,
+  },
+  heroPoster: {
+    width: 140,
+    height: 210,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  heroPosterPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroMeta: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: "flex-end",
   },
 });

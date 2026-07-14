@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View, type ListRenderItemInfo } from "react-native";
+import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import type { EpisodeRow } from "@/api/types";
 import { colors, radius, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
-import { formatDuration } from "@/lib/mediaUrl";
+import { formatDuration, normalizeListPosterUrl, withAccessToken } from "@/lib/mediaUrl";
 import { episodeIsCompleted, pickPrimaryEpisodeMediaId } from "@/lib/seriesPlayback";
-import { useTvRemoteNav } from "@/hooks/useTvRemoteNav";
+import { TV_NAV_ENABLED, useTvRemoteNav } from "@/hooks/useTvRemoteNav";
 
 type Props = {
   episodes: EpisodeRow[];
@@ -14,6 +16,15 @@ type Props = {
   onExitLeft?: () => void;
   onPressEpisode: (ep: EpisodeRow, index: number) => void;
 };
+
+function episodePosterUrl(ep: EpisodeRow): string {
+  const versions = ep.versions ?? [];
+  const sorted = [...versions].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const v = sorted[0];
+  const raw = v?.poster_url;
+  if (!raw) return "";
+  return withAccessToken(normalizeListPosterUrl(raw));
+}
 
 export default function EpisodeList({
   episodes,
@@ -59,12 +70,14 @@ export default function EpisodeList({
     const completed = episodeIsCompleted(item);
     const duration = item.duration ? formatDuration(item.duration) : "—";
     const title = item.title?.trim() || t("series.episode_n", { n: item.episode_num });
+    const posterUri = episodePosterUrl(item);
+    const showPoster = Boolean(posterUri);
 
     return (
       <Pressable
         focusable={false}
         disabled={!playable}
-        onPress={() => {
+        onPress={TV_NAV_ENABLED ? undefined : () => {
           if (!playable) return;
           onPressEpisode(item, index);
         }}
@@ -74,6 +87,21 @@ export default function EpisodeList({
           !playable && styles.rowDisabled,
         ]}
       >
+        {/* Episode poster thumbnail */}
+        <View style={styles.posterWrap}>
+          {showPoster ? (
+            <Image
+              source={{ uri: posterUri }}
+              style={styles.posterImg}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <View style={[styles.posterImg, styles.posterPlaceholder]}>
+              <Ionicons name="film-outline" size={18} color={colors.textMuted} />
+            </View>
+          )}
+        </View>
         <Text style={[styles.epNum, !playable && styles.textMuted]}>E{item.episode_num}</Text>
         <Text
           style={[styles.title, !playable && styles.textMuted]}
@@ -133,7 +161,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
+    paddingVertical: 12,
     paddingHorizontal: spacing.sm,
     marginBottom: 4,
     borderRadius: radius.sm,
@@ -148,6 +176,24 @@ const styles = StyleSheet.create({
   },
   rowDisabled: {
     opacity: 0.45,
+  },
+  posterWrap: {
+    width: 80,
+    height: 45,
+    borderRadius: radius.sm,
+    overflow: "hidden",
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexShrink: 0,
+  },
+  posterImg: {
+    width: "100%",
+    height: "100%",
+  },
+  posterPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   epNum: {
     width: 48,

@@ -61,8 +61,8 @@ export default function TvVideoPlayerOverlay({
         key: "rewind",
         icon: "play-back",
         iconSize: 28,
-        label: "10s",
-        onPress: () => onSeekBy(-10),
+        label: "30s",
+        onPress: () => onSeekBy(-30),
       },
       {
         key: "play",
@@ -75,8 +75,8 @@ export default function TvVideoPlayerOverlay({
         key: "forward",
         icon: "play-forward",
         iconSize: 28,
-        label: "10s",
-        onPress: () => onSeekBy(10),
+        label: "30s",
+        onPress: () => onSeekBy(30),
       },
       {
         key: "stop",
@@ -134,11 +134,11 @@ export default function TvVideoPlayerOverlay({
 
       if (z === "progress") {
         if (type === "left" || type === "longLeft") {
-          onSeekBy(type === "longLeft" ? -30 : -10);
+          onSeekBy(type === "longLeft" ? -60 : -30);
           return;
         }
         if (type === "right" || type === "longRight") {
-          onSeekBy(type === "longRight" ? 30 : 10);
+          onSeekBy(type === "longRight" ? 60 : 30);
           return;
         }
         if (type === "up") {

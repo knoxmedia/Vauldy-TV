@@ -83,8 +83,8 @@ export default function MusicPlayerView({
     items.push({
       key: "rewind",
       icon: "play-back",
-      label: "10s",
-      onPress: () => onSeekBy(-10),
+      label: "30s",
+      onPress: () => onSeekBy(-30),
     });
     items.push({
       key: "play",
@@ -96,8 +96,8 @@ export default function MusicPlayerView({
     items.push({
       key: "forward",
       icon: "play-forward",
-      label: "10s",
-      onPress: () => onSeekBy(10),
+      label: "30s",
+      onPress: () => onSeekBy(30),
     });
     if (onNext) {
       items.push({

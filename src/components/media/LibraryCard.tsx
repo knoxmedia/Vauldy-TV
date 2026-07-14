@@ -42,7 +42,7 @@ export default function LibraryCard({ library, onPress, preferredFocus, onFocus,
 
   if (useRemoteNav) {
     return (
-      <Pressable focusable={false} onPress={onPress} style={[styles.card, tvSelected && styles.cardSelected]}>
+      <Pressable focusable={false} style={[styles.card, tvSelected && styles.cardSelected]}>
         {body}
       </Pressable>
     );

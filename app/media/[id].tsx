@@ -8,6 +8,7 @@ import {
   addFavorite,
   fetchFavoriteStatus,
   fetchMediaDetail,
+  fetchMediaProgress,
   removeFavorite,
 } from "@/api/client";
 import TvBackButton, { useTvBackHandler } from "@/components/focus/TvBackButton";
@@ -33,6 +34,7 @@ export default function MediaDetailScreen() {
   useTvBackHandler(goBack);
   const [item, setItem] = useState<Awaited<ReturnType<typeof fetchMediaDetail>> | null>(null);
   const [favorited, setFavorited] = useState(false);
+  const [savedPosition, setSavedPosition] = useState(0);
   const [loading, setLoading] = useState(true);
   const [posterUri, setPosterUri] = useState("");
   const [posterFallbackUsed, setPosterFallbackUsed] = useState(false);
@@ -49,10 +51,18 @@ export default function MediaDetailScreen() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchMediaDetail(mediaId), fetchFavoriteStatus(mediaId)])
-      .then(([detail, fav]) => {
+    setSavedPosition(0);
+    Promise.all([
+      fetchMediaDetail(mediaId),
+      fetchFavoriteStatus(mediaId),
+      fetchMediaProgress(mediaId).catch(() => null),
+    ])
+      .then(([detail, fav, progress]) => {
         setItem(detail);
         setFavorited(fav);
+        if (progress?.position && progress.position > 0) {
+          setSavedPosition(progress.position);
+        }
       })
       .catch(() => setItem(null))
       .finally(() => setLoading(false));
@@ -73,10 +83,13 @@ export default function MediaDetailScreen() {
 
   const primaryAction = useCallback(() => {
     if (!item) return;
-    if (item.file_type === "video" || item.file_type === "audio") return router.push(`/player/${item.id}`);
+    if (item.file_type === "video" || item.file_type === "audio") {
+      const tParam = savedPosition > 0 ? `?t=${Math.floor(savedPosition)}` : "";
+      return router.push(`/player/${item.id}${tParam}`);
+    }
     if (item.file_type === "image") return router.push(`/photo/${item.id}`);
     if (item.file_type === "document") return router.push(`/reader/${item.id}`);
-  }, [item, router]);
+  }, [item, router, savedPosition]);
 
   const toggleFavorite = useCallback(async () => {
     if (!item) return;
