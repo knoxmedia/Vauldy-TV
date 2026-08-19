@@ -63,6 +63,7 @@ export default {
   "search.open_keyboard": "按确认键输入搜索词",
   "search.hint": "输入关键词，搜索全部媒体内容。",
   "search.history": "最近搜索",
+  "search.clear_history": "\u6e05\u7a7a\u8bb0\u5f55",
   "search.loading": "正在搜索…",
   "search.empty": "没有找到与“{query}”相关的内容。",
   "search.error": "搜索失败，请检查网络后重试。",

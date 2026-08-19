@@ -328,7 +328,7 @@ export default function SeriesDetailScreen() {
           <View style={styles.actions}>
             <Pressable
               focusable={!TV_NAV_ENABLED}
-              onPress={() => void onContinue()}
+              onPress={TV_NAV_ENABLED ? undefined : () => void onContinue()}
               style={[
                 styles.primaryBtn,
                 actionsSelected && actionIndex === 0 && styles.btnSelected,
@@ -338,7 +338,7 @@ export default function SeriesDetailScreen() {
             </Pressable>
             <Pressable
               focusable={!TV_NAV_ENABLED}
-              onPress={() => void onPlayFromStart()}
+              onPress={TV_NAV_ENABLED ? undefined : () => void onPlayFromStart()}
               style={[
                 styles.secondaryBtn,
                 actionsSelected && actionIndex === 1 && styles.btnSelected,
@@ -358,7 +358,7 @@ export default function SeriesDetailScreen() {
                 <Pressable
                   key={season.id}
                   focusable={!TV_NAV_ENABLED}
-                  onPress={() => {
+                  onPress={TV_NAV_ENABLED ? undefined : () => {
                     setSeasonIndex(i);
                     setFocusZone("seasons");
                   }}

@@ -13,16 +13,23 @@ import {
 } from "react-native";
 import { fetchLibraries, fetchMedia } from "@/api/client";
 import type { Library, MediaItem } from "@/api/types";
-import HorizontalShelf from "@/components/focus/HorizontalShelf";
 import TvOnScreenKeyboard from "@/components/focus/TvOnScreenKeyboard";
 import TvTextInput from "@/components/focus/TvTextInput";
 import MediaCard from "@/components/media/MediaCard";
+import { SIDEBAR_WIDTH } from "@/constants/layout";
 import { colors, radius, spacing } from "@/constants/theme";
 import { useMainContentNav } from "@/hooks/useMainContentNav";
-import type { TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { tvNavigationEventType, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
 import { t } from "@/i18n";
-import { loadSearchHistory, recordSearchHistory } from "@/lib/searchHistory";
+import { clearSearchHistory, loadSearchHistory, recordSearchHistory } from "@/lib/searchHistory";
+import {
+  indexMediaCatalog,
+  indexedMediaMatches,
+  isInitialSearchQuery,
+  mergeMediaResults,
+  type IndexedMediaTitle,
+} from "@/lib/pinyinSearch";
 import { ensureCanPlay } from "@/lib/playbackGate";
 import { peekContentFocus, saveContentFocus } from "@/store/contentFocus";
 import { useTvFocusStore } from "@/store/tvFocus";
@@ -33,7 +40,12 @@ type ResultKind = "movies" | "series" | "music" | "photos" | "documents";
 type ResultShelf = { kind: ResultKind; title: string; items: MediaItem[] };
 
 const SEARCH_LIMIT = 100;
-const DEBOUNCE_MS = 400;
+const PINYIN_LIBRARY_LIMIT = 2000;
+const PINYIN_RESULT_LIMIT = 100;
+const CATEGORY_RESULT_LIMIT = 60;
+const DEBOUNCE_MS = 150;
+const RESULT_COLUMNS = 5;
+const RESULT_GAP = 14;
 
 function resultKind(item: MediaItem, libraryTypes: ReadonlyMap<number, string>): ResultKind {
   if (item.file_type === "audio") return "music";
@@ -56,6 +68,9 @@ export default function SearchScreen() {
   const mountedRef = useRef(true);
   const requestRef = useRef(0);
   const rowYRef = useRef<Record<number, number>>({ 0: 0 });
+  const gridItemYRef = useRef<Record<string, number>>({});
+  const pinyinCatalogRef = useRef<IndexedMediaTitle[] | null>(null);
+  const pinyinCatalogPromiseRef = useRef<Promise<IndexedMediaTitle[]> | null>(null);
 
   const [query, setQuery] = useState("");
   const [searchedQuery, setSearchedQuery] = useState("");
@@ -77,14 +92,14 @@ export default function SearchScreen() {
     };
     for (const item of items) grouped[resultKind(item, libraryTypes)].push(item);
     return (["movies", "series", "music", "photos", "documents"] as const)
-      .map((kind) => ({ kind, title: t(`search.${kind}`), items: grouped[kind] }))
+      .map((kind) => ({ kind, title: t(`search.${kind}`), items: grouped[kind].slice(0, CATEGORY_RESULT_LIMIT) }))
       .filter((shelf) => shelf.items.length > 0);
   }, [items, libraryTypes]);
 
   const rows = useMemo(() => {
-    const result: Array<{ type: "input" | "history" | "results"; items?: readonly unknown[] }> = [{ type: "input" }];
-    if (history.length) result.push({ type: "history", items: history });
-    for (const shelf of shelves) result.push({ type: "results", items: shelf.items });
+    const result: Array<{ type: "input" | "history" | "results"; items?: readonly unknown[]; columns?: number }> = [{ type: "input" }];
+    if (history.length) result.push({ type: "history", items: [...history, "__clear_history__"] });
+    for (const shelf of shelves) result.push({ type: "results", items: shelf.items, columns: RESULT_COLUMNS });
     return result;
   }, [history, shelves]);
 
@@ -94,10 +109,9 @@ export default function SearchScreen() {
   historyRef.current = history;
   const shelvesRef = useRef(shelves);
   shelvesRef.current = shelves;
+  // Immediate focus — only updated by key handlers / restore, never clobbered from state.
   const focusRowRef = useRef(focusRow);
-  focusRowRef.current = focusRow;
   const focusColumnsRef = useRef(focusColumns);
-  focusColumnsRef.current = focusColumns;
   const keyboardOpenRef = useRef(keyboardOpen);
   keyboardOpenRef.current = keyboardOpen;
   const routerRef = useRef(router);
@@ -114,6 +128,15 @@ export default function SearchScreen() {
     setFocusRow(clamped);
     scrollToRow(clamped);
   }, [scrollToRow]);
+
+  const scrollToGridItem = useCallback((row: number, index: number) => {
+    const sectionY = rowYRef.current[row] ?? 0;
+    const itemY = gridItemYRef.current[`${row}:${index}`] ?? 0;
+    scrollRef.current?.scrollTo({
+      y: Math.max(0, sectionY + itemY - spacing.xl * 2),
+      animated: true,
+    });
+  }, []);
 
   const updateQuery = useCallback((value: string) => {
     setQuery(value);
@@ -137,11 +160,22 @@ export default function SearchScreen() {
     setZone("content");
   }, [setZone]);
 
-  const openItem = useCallback((item: MediaItem) => {
+  const clearRecentSearches = useCallback(() => {
+    void clearSearchHistory().catch(() => undefined);
+    historyRef.current = [];
+    setHistory([]);
+    focusRowRef.current = 0;
+    focusColumnsRef.current = {};
+    setFocusRow(0);
+    setFocusColumns({});
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, []);
+
+  const openItem = useCallback((item: MediaItem, focus?: { shelf: number; index: number }) => {
     if ((item.file_type === "audio" || item.file_type === "video") && mediaRoute(item).startsWith("/player")) {
       if (!ensureCanPlay()) return;
     }
-    saveContentFocus(FOCUS_KEY, {
+    saveContentFocus(FOCUS_KEY, focus ?? {
       shelf: focusRowRef.current,
       index: focusColumnsRef.current[focusRowRef.current] ?? 0,
     });
@@ -152,10 +186,13 @@ export default function SearchScreen() {
     setZone("content");
     const saved = peekContentFocus(FOCUS_KEY);
     if (saved) {
+      focusRowRef.current = saved.shelf ?? 0;
+      focusColumnsRef.current = { ...focusColumnsRef.current, [saved.shelf ?? 0]: saved.index };
       moveToRow(saved.shelf ?? 0);
       setFocusColumns((prev) => ({ ...prev, [saved.shelf ?? 0]: saved.index }));
       return;
     }
+    focusRowRef.current = 0;
     moveToRow(0);
   }, [moveToRow, setZone]));
 
@@ -177,7 +214,31 @@ export default function SearchScreen() {
     };
   }, []);
 
+  const loadPinyinCatalog = useCallback(async (): Promise<IndexedMediaTitle[]> => {
+    if (pinyinCatalogRef.current) return pinyinCatalogRef.current;
+    if (pinyinCatalogPromiseRef.current) return pinyinCatalogPromiseRef.current;
+    const promise = (async () => {
+      const libraries = await fetchLibraries();
+      const batches = await Promise.all(
+        libraries
+          .filter((library) => library.enabled !== 0)
+          .map((library) => fetchMedia(library.id, { limit: PINYIN_LIBRARY_LIMIT }).catch(() => [])),
+      );
+      const merged = mergeMediaResults([], batches.flat());
+      const indexed = await indexMediaCatalog(merged);
+      pinyinCatalogRef.current = indexed;
+      return indexed;
+    })().finally(() => {
+      pinyinCatalogPromiseRef.current = null;
+    });
+    pinyinCatalogPromiseRef.current = promise;
+    return promise;
+  }, []);
+
   useEffect(() => {
+    // Typing must stay lightweight on TV. Search and pinyin indexing start only
+    // after the user presses Done and the keyboard has closed.
+    if (keyboardOpen) return;
     const term = query.trim();
     if (!term) return;
     const timer = setTimeout(() => {
@@ -190,10 +251,19 @@ export default function SearchScreen() {
           if (mountedRef.current) setHistory(next);
         })
         .catch(() => undefined);
-      fetchMedia(undefined, { q: term, limit: SEARCH_LIMIT })
-        .then((nextItems) => {
+      const serverSearch = fetchMedia(undefined, { q: term, limit: SEARCH_LIMIT });
+      const pinyinSearch = isInitialSearchQuery(term)
+        ? loadPinyinCatalog().then((catalog) =>
+            catalog
+              .filter((entry) => indexedMediaMatches(entry, term))
+              .slice(0, PINYIN_RESULT_LIMIT)
+              .map((entry) => entry.item),
+          )
+        : Promise.resolve([] as MediaItem[]);
+      Promise.all([serverSearch, pinyinSearch])
+        .then(([serverItems, pinyinItems]) => {
           if (!mountedRef.current || request !== requestRef.current) return;
-          setItems(nextItems);
+          setItems(mergeMediaResults(serverItems, pinyinItems));
         })
         .catch(() => {
           if (!mountedRef.current || request !== requestRef.current) return;
@@ -205,7 +275,7 @@ export default function SearchScreen() {
         });
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [keyboardOpen, loadPinyinCatalog, query]);
 
   useEffect(() => {
     if (focusRowRef.current >= rows.length) moveToRow(rows.length - 1);
@@ -213,60 +283,72 @@ export default function SearchScreen() {
 
   useMainContentNav(useCallback((evt: TvKeyEvent) => {
     if (keyboardOpenRef.current) return false;
-    const type = evt.eventType;
+    const type = tvNavigationEventType(evt.eventType);
     if (type === "focus" || type === "blur") return false;
     const currentRows = rowsRef.current;
     const row = focusRowRef.current;
     const current = currentRows[row];
     if (!current) return false;
 
+    const itemCount = current.items?.length ?? 0;
+    const columns = current.columns ?? Math.max(1, itemCount);
+    const itemIndex = focusColumnsRef.current[row] ?? 0;
+    const gridRow = Math.floor(itemIndex / columns);
+    const gridColumn = itemIndex % columns;
+    const moveWithinCurrent = (next: number) => {
+      const clamped = Math.max(0, Math.min(itemCount - 1, next));
+      focusColumnsRef.current = { ...focusColumnsRef.current, [row]: clamped };
+      setFocusColumns(focusColumnsRef.current);
+      if (current.type === "results") scrollToGridItem(row, clamped);
+      else scrollToRow(row);
+    };
+
     if (type === "up") {
-      if (row > 0) moveToRow(row - 1);
+      if (current.type === "results" && gridRow > 0) moveWithinCurrent(itemIndex - columns);
+      else if (row > 0) moveToRow(row - 1);
       return true;
     }
     if (type === "down") {
-      if (row < currentRows.length - 1) moveToRow(row + 1);
+      if (current.type === "results" && itemIndex + columns < itemCount) moveWithinCurrent(itemIndex + columns);
+      else if (row < currentRows.length - 1) moveToRow(row + 1);
       return true;
     }
     if (type === "left") {
-      const column = focusColumnsRef.current[row] ?? 0;
-      if (row > 0 && column > 0) {
-        const next = column - 1;
-        focusColumnsRef.current = { ...focusColumnsRef.current, [row]: next };
-        setFocusColumns(focusColumnsRef.current);
-      } else {
-        setZone("sidebar");
-      }
+      if (row > 0 && itemIndex > 0 && (current.type !== "results" || gridColumn > 0)) moveWithinCurrent(itemIndex - 1);
+      else setZone("sidebar");
       return true;
     }
     if (type === "right" && row > 0) {
-      const count = current.items?.length ?? 0;
-      const column = focusColumnsRef.current[row] ?? 0;
-      if (column < count - 1) {
-        focusColumnsRef.current = { ...focusColumnsRef.current, [row]: column + 1 };
-        setFocusColumns(focusColumnsRef.current);
-      }
+      if (itemIndex < itemCount - 1 && (current.type !== "results" || gridColumn < columns - 1)) moveWithinCurrent(itemIndex + 1);
       return true;
     }
     if (type === "select") {
+      const row = focusRowRef.current;
+      const current = currentRows[row];
+      if (!current) return false;
       if (current.type === "input") {
+        requestRef.current += 1;
+        setLoading(false);
         setKeyboardOpen(true);
       } else {
         const column = focusColumnsRef.current[row] ?? 0;
         if (current.type === "history") {
-          const term = historyRef.current[column];
-          if (term) chooseHistory(term);
+          if (column === historyRef.current.length) clearRecentSearches();
+          else {
+            const term = historyRef.current[column];
+            if (term) chooseHistory(term);
+          }
         } else {
           const historyOffset = historyRef.current.length ? 1 : 0;
           const shelf = shelvesRef.current[row - 1 - historyOffset];
           const item = shelf?.items[column];
-          if (item) openItem(item);
+          if (item) openItem(item, { shelf: row, index: column });
         }
       }
       return true;
     }
     return false;
-  }, [chooseHistory, moveToRow, openItem, setZone]));
+  }, [chooseHistory, clearRecentSearches, moveToRow, openItem, scrollToGridItem, scrollToRow, setZone]));
 
   const onRowLayout = (row: number) => (event: LayoutChangeEvent) => {
     rowYRef.current[row] = event.nativeEvent.layout.y;
@@ -283,8 +365,8 @@ export default function SearchScreen() {
           {TV_NAV_ENABLED ? (
             <Pressable
               focusable={false}
-              onPress={() => setKeyboardOpen(true)}
-              style={[styles.tvInput, contentFocused && focusRow === 0 && styles.selected]}
+              onPress={undefined}
+              style={[styles.tvInput, contentFocused && !keyboardOpen && focusRow === 0 && styles.selected]}
             >
               <Text style={query ? styles.inputText : styles.placeholder} numberOfLines={1}>
                 {query || t("search.placeholder")}
@@ -306,8 +388,12 @@ export default function SearchScreen() {
               value={query}
               onChangeText={updateQuery}
               onDone={() => {
+                // Close first; the search effect is intentionally gated on this.
+                keyboardOpenRef.current = false;
                 setKeyboardOpen(false);
-                moveToRow(0);
+                focusRowRef.current = 0;
+                setFocusRow(0);
+                scrollRef.current?.scrollTo({ y: 0, animated: false });
               }}
               preferredFocus
             />
@@ -315,22 +401,34 @@ export default function SearchScreen() {
         </View>
 
         {!keyboardOpen && history.length > 0 ? (
-          <View onLayout={onRowLayout(historyRow)}>
-            <HorizontalShelf
-              title={t("search.history")}
-              data={history}
-              focusIndex={contentFocused && focusRow === historyRow ? (focusColumns[historyRow] ?? 0) : -1}
-              keyExtractor={(term) => term}
-              renderItem={(term, _index, { selected }) => (
-                <Pressable
-                  focusable={!TV_NAV_ENABLED}
-                  onPress={() => chooseHistory(term)}
-                  style={[styles.historyChip, selected && styles.selected]}
-                >
-                  <Text style={styles.historyText}>{term}</Text>
-                </Pressable>
-              )}
-            />
+          <View onLayout={onRowLayout(historyRow)} style={styles.historySection}>
+            <Text style={styles.sectionTitle}>{t("search.history")}</Text>
+            <View style={styles.historyRow}>
+              {history.map((term, index) => {
+                const selected = contentFocused && focusRow === historyRow && (focusColumns[historyRow] ?? 0) === index;
+                return (
+                  <Pressable
+                    key={term}
+                    focusable={false}
+                    onPress={TV_NAV_ENABLED ? undefined : () => chooseHistory(term)}
+                    style={[styles.historyChip, selected && styles.selected]}
+                  >
+                    <Text style={styles.historyText}>{term}</Text>
+                  </Pressable>
+                );
+              })}
+              <Pressable
+                focusable={false}
+                onPress={TV_NAV_ENABLED ? undefined : clearRecentSearches}
+                style={[
+                  styles.historyChip,
+                  styles.clearHistoryChip,
+                  contentFocused && focusRow === historyRow && (focusColumns[historyRow] ?? 0) === history.length && styles.selected,
+                ]}
+              >
+                <Text style={styles.clearHistoryText}>{t("search.clear_history")}</Text>
+              </Pressable>
+            </View>
           </View>
         ) : null}
 
@@ -345,17 +443,28 @@ export default function SearchScreen() {
 
         {!keyboardOpen ? shelves.map((shelf) => {
           const row = renderedRow++;
+          const selectedIndex = contentFocused && focusRow === row ? (focusColumns[row] ?? 0) : -1;
           return (
-            <View key={shelf.kind} onLayout={onRowLayout(row)}>
-              <HorizontalShelf
-                title={shelf.title}
-                data={shelf.items}
-                focusIndex={contentFocused && focusRow === row ? (focusColumns[row] ?? 0) : -1}
-                keyExtractor={(item) => String(item.id)}
-                renderItem={(item, _index, { selected }) => (
-                  <MediaCard item={item} tvSelected={selected} onPress={() => openItem(item)} />
-                )}
-              />
+            <View key={shelf.kind} onLayout={onRowLayout(row)} style={styles.resultSection}>
+              <Text style={styles.sectionTitle}>{shelf.title}</Text>
+              <View style={styles.resultGrid}>
+                {shelf.items.map((item, index) => (
+                  <View
+                    key={item.id}
+                    style={styles.resultCell}
+                    onLayout={(event) => {
+                      gridItemYRef.current[`${row}:${index}`] = event.nativeEvent.layout.y;
+                    }}
+                  >
+                    <MediaCard
+                      item={item}
+                      layout="grid"
+                      tvSelected={selectedIndex === index}
+                      onPress={() => openItem(item)}
+                    />
+                  </View>
+                ))}
+              </View>
             </View>
           );
         }) : null}
@@ -383,6 +492,12 @@ const styles = StyleSheet.create({
   inputText: { color: colors.text, fontSize: 22 },
   placeholder: { color: colors.textMuted, fontSize: 20 },
   inputHint: { color: colors.textSecondary, fontSize: 13, marginTop: 4 },
+  sectionTitle: { color: colors.text, fontSize: 24, fontWeight: "700", marginBottom: spacing.md },
+  historySection: { paddingHorizontal: spacing.lg, marginBottom: spacing.xl },
+  historyRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  resultSection: { paddingHorizontal: spacing.lg, marginBottom: spacing.xl },
+  resultGrid: { flexDirection: "row", flexWrap: "wrap", gap: RESULT_GAP },
+  resultCell: { width: `${100 / RESULT_COLUMNS}%`, maxWidth: (1280 - SIDEBAR_WIDTH - spacing.lg * 2 - RESULT_GAP * (RESULT_COLUMNS - 1)) / RESULT_COLUMNS - 3 },
   historyChip: {
     minWidth: 150,
     maxWidth: 280,
@@ -395,6 +510,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
   },
   historyText: { color: colors.text, fontSize: 18, fontWeight: "600" },
+  clearHistoryChip: { borderColor: colors.accent },
+  clearHistoryText: { color: colors.accent, fontSize: 18, fontWeight: "700" },
   status: { marginHorizontal: spacing.lg, marginBottom: spacing.xl, minHeight: 48, flexDirection: "row", alignItems: "center", gap: 12 },
   statusText: { color: colors.textSecondary, fontSize: 18 },
 });

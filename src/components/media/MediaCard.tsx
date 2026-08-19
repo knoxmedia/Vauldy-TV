@@ -81,7 +81,7 @@ export default function MediaCard({
   return (
     <View style={[layout === "grid" ? styles.cardGrid : landscape ? styles.cardShelfLandscape : styles.cardShelfPoster]}>
       {useRemoteNav ? (
-        <Pressable focusable={false} onPress={onPress} style={styles.posterFocus}>
+        <Pressable focusable={false} style={styles.posterFocus}>
           {tvSelected ? <View style={[styles.focusRing, styles.posterFocusRing]} pointerEvents="none" /> : null}
           {posterBody}
         </Pressable>

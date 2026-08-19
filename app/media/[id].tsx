@@ -206,14 +206,14 @@ export default function MediaDetailScreen() {
             <View style={styles.actions}>
               <Pressable
                 focusable={!TV_NAV_ENABLED}
-                onPress={primaryAction}
+                onPress={TV_NAV_ENABLED ? undefined : primaryAction}
                 style={[styles.primaryBtn, actionsSelected && actionIndex === 0 && styles.btnSelected]}
               >
                 <Text style={styles.primaryText}>{actionLabel}</Text>
               </Pressable>
               <Pressable
                 focusable={!TV_NAV_ENABLED}
-                onPress={() => void toggleFavorite()}
+                onPress={TV_NAV_ENABLED ? undefined : () => void toggleFavorite()}
                 style={[styles.secondaryBtn, actionsSelected && actionIndex === 1 && styles.btnSelected]}
               >
                 <Text style={styles.secondaryText}>{favorited ? t("common.unfavorite") : t("common.favorite")}</Text>

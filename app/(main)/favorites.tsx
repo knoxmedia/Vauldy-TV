@@ -10,7 +10,7 @@ import MediaCard from "@/components/media/MediaCard";
 import { colors, spacing } from "@/constants/theme";
 import { SIDEBAR_WIDTH } from "@/constants/layout";
 import { useMainContentNav } from "@/hooks/useMainContentNav";
-import type { TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { tvNavigationEventType, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { peekContentFocus, saveContentFocus } from "@/store/contentFocus";
 import { useTvFocusStore } from "@/store/tvFocus";
 import { t } from "@/i18n";
@@ -51,8 +51,8 @@ export default function FavoritesScreen() {
   // Refs for stable handler access.
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  // Immediate focus — only updated by key handlers / restore, never clobbered from state.
   const focusIndexRef = useRef(focusIndex);
-  focusIndexRef.current = focusIndex;
   const routerRef = useRef(router);
   routerRef.current = router;
   const setZoneRef = useRef(setZone);
@@ -63,10 +63,6 @@ export default function FavoritesScreen() {
   exitContentDownRef.current = exitContentDown;
   const listRefRef = useRef(listRef);
   listRefRef.current = listRef;
-
-  // Render-confirmed ref — updated ONLY by React render.
-  const focusIndexConfirmed = useRef(focusIndex);
-  focusIndexConfirmed.current = focusIndex;
 
   const scrollToItem = useCallback((index: number) => {
     const row = Math.floor(index / GRID_COLUMNS);
@@ -94,7 +90,7 @@ export default function FavoritesScreen() {
 
   useMainContentNav(
     useCallback((evt: TvKeyEvent) => {
-      const type = evt.eventType;
+      const type = tvNavigationEventType(evt.eventType);
       if (type === "focus" || type === "blur") return false;
 
       const count = itemsRef.current.length;
@@ -107,7 +103,7 @@ export default function FavoritesScreen() {
       const maxRow = Math.floor((count - 1) / columns);
 
       if (type === "select") {
-        const idx = focusIndexConfirmed.current;
+        const idx = focusIndexRef.current;
         const item = itemsRef.current[idx];
         if (item) {
           saveContentFocus(FOCUS_KEY, { index: idx });

@@ -3,7 +3,7 @@ import { BackHandler, Pressable, StyleSheet, Text } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { colors, radius, spacing } from "@/constants/theme";
 import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
-import { registerTvKeyHandler, consumeTvKeyEvent, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { registerTvKeyHandler, consumeTvKeyEvent, tvNavigationEventType, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { t } from "@/i18n";
 import { useTvFocusStore } from "@/store/tvFocus";
 
@@ -41,17 +41,18 @@ export default function TvBackButton({ onPress, preferredFocus }: Props) {
     if (!TV_NAV_ENABLED) return;
     const handler = (evt: TvKeyEvent) => {
       if (!isFocusedRef.current || zoneRef.current !== "back") return;
-      if (evt.eventType === "select") {
+      const type = tvNavigationEventType(evt.eventType);
+      if (type === "select") {
         consumeTvKeyEvent(evt);
         onPressRef.current();
         return;
       }
-      if (evt.eventType === "down" || evt.eventType === "left") {
+      if (type === "down" || type === "left") {
         consumeTvKeyEvent(evt);
         setZoneRef.current("content");
         return;
       }
-      if (evt.eventType === "up") {
+      if (type === "up") {
         consumeTvKeyEvent(evt);
         return;
       }
@@ -63,7 +64,7 @@ export default function TvBackButton({ onPress, preferredFocus }: Props) {
     <Pressable
       focusable={!TV_NAV_ENABLED}
       hasTVPreferredFocus={TV_NAV_ENABLED ? undefined : preferredFocus}
-      onPress={onPress}
+      onPress={TV_NAV_ENABLED ? undefined : onPress}
       style={({ pressed, focused }) => [
         styles.btn,
         selected && styles.btnSelected,

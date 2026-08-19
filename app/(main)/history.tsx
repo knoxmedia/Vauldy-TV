@@ -10,7 +10,7 @@ import LoadingState, { Screen } from "@/components/LoadingState";
 import MediaCard from "@/components/media/MediaCard";
 import { colors, spacing } from "@/constants/theme";
 import { useMainContentNav } from "@/hooks/useMainContentNav";
-import type { TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { tvNavigationEventType, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { t } from "@/i18n";
 import { groupHistoryItems, type HistoryGroupKey } from "@/lib/historyGroups";
 import { ensureCanPlay } from "@/lib/playbackGate";
@@ -58,16 +58,9 @@ export default function HistoryScreen() {
   const [itemIndex, setItemIndex] = useState(0);
 
   const activeShelfRef = useRef(activeShelf);
-  activeShelfRef.current = activeShelf;
   const itemIndexRef = useRef(itemIndex);
-  itemIndexRef.current = itemIndex;
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
-  const activeShelfConfirmed = useRef(activeShelf);
-  activeShelfConfirmed.current = activeShelf;
-  const itemIndexConfirmed = useRef(itemIndex);
-  itemIndexConfirmed.current = itemIndex;
-
   const load = useCallback(async () => {
     try {
       setItems(await fetchUserHistory(100));
@@ -83,9 +76,13 @@ export default function HistoryScreen() {
       setLoading(true);
       load().finally(() => {
         if (saved) {
+          activeShelfRef.current = saved.shelf ?? 0;
+          itemIndexRef.current = saved.index;
           setActiveShelf(saved.shelf ?? 0);
           setItemIndex(saved.index);
         } else {
+          activeShelfRef.current = 0;
+          itemIndexRef.current = 0;
           setActiveShelf(0);
           setItemIndex(0);
         }
@@ -96,24 +93,30 @@ export default function HistoryScreen() {
 
   useEffect(() => {
     if (groups.length === 0) return;
-    if (activeShelf >= groups.length) {
+    if (activeShelfRef.current >= groups.length) {
+      activeShelfRef.current = 0;
+      itemIndexRef.current = 0;
       setActiveShelf(0);
       setItemIndex(0);
       return;
     }
-    const len = groups[activeShelf]?.items.length ?? 0;
-    if (itemIndex >= len) setItemIndex(Math.max(0, len - 1));
-  }, [groups, activeShelf, itemIndex]);
+    const len = groups[activeShelfRef.current]?.items.length ?? 0;
+    if (itemIndexRef.current >= len) {
+      const next = Math.max(0, len - 1);
+      itemIndexRef.current = next;
+      setItemIndex(next);
+    }
+  }, [groups]);
 
   useMainContentNav(
     useCallback((evt: TvKeyEvent) => {
-      const type = evt.eventType;
+      const type = tvNavigationEventType(evt.eventType);
       if (type === "focus" || type === "blur") return false;
       const gs = groupsRef.current;
       if (gs.length === 0) return false;
 
-      const shelf = activeShelfConfirmed.current;
-      const idx = itemIndexConfirmed.current;
+      const shelf = activeShelfRef.current;
+      const idx = itemIndexRef.current;
       const data = gs[shelf]?.items ?? [];
       if (data.length === 0) return false;
 

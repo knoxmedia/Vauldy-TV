@@ -7,7 +7,7 @@ import { fetchMedia, fetchMediaDetail } from "@/api/client";
 import type { MediaDetail, MediaItem } from "@/api/types";
 import { useTvBackHandler } from "@/components/focus/TvBackButton";
 import LoadingState from "@/components/LoadingState";
-import { consumeTvKeyEvent, registerTvKeyHandler, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { consumeTvKeyEvent, registerTvKeyHandler, tvNavigationEventType, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
 import { useMusicPreviewBar } from "@/hooks/useMusicPreviewBar";
 import { colors } from "@/constants/theme";
@@ -28,8 +28,8 @@ export default function PhotoScreen() {
 
   const photosRef = useRef(photos);
   photosRef.current = photos;
+  // Immediate index — only updated by key handlers / load, never clobbered from state.
   const indexRef = useRef(index);
-  indexRef.current = index;
   const isFocusedRef = useRef(isFocused);
   isFocusedRef.current = isFocused;
 
@@ -76,7 +76,7 @@ export default function PhotoScreen() {
     const handler = (evt: TvKeyEvent) => {
       if (!isFocusedRef.current) return;
 
-      const type = evt.eventType;
+      const type = tvNavigationEventType(evt.eventType);
       if (type !== "left" && type !== "right") return;
 
       const list = photosRef.current;

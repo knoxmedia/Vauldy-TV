@@ -18,6 +18,7 @@ import {
 import type { MediaDetail, MediaSubtitleRow } from "@/api/types";
 import { useTvBackHandler } from "@/components/focus/TvBackButton";
 import { registerTvKeyHandler, consumeTvKeyEvent, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
 import FocusablePressable from "@/components/focus/FocusablePressable";
 import MusicPlayerView from "@/components/player/MusicPlayerView";
 import NextEpisodeOverlay from "@/components/player/NextEpisodeOverlay";
@@ -767,7 +768,7 @@ export default function PlayerScreen() {
         hasTVPreferredFocus
         accessible
         style={styles.tvEventSink}
-        onPress={() => {
+        onPress={TV_NAV_ENABLED ? undefined : () => {
           if (nextEpisodeRef.current) {
             if (nextFocusRef.current === 0) goNextEpisode();
             else cancelNext();

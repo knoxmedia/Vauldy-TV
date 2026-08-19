@@ -2,7 +2,7 @@ import { useRouter, useSegments, type Href } from "expo-router";
 import { useEffect, useRef } from "react";
 import { Alert, BackHandler } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
-import { consumeTvKeyEvent, registerPriorityTvKeyHandler, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { consumeTvKeyEvent, registerPriorityTvKeyHandler, tvNavigationEventType, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { t } from "@/i18n";
 import { exitApp } from "@/lib/exitApp";
 import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
@@ -58,7 +58,7 @@ export default function MainShellTvNav() {
       if (segmentsRef.current[0] !== "(main)") return;
 
       const state = useTvFocusStore.getState();
-      const type = evt.eventType;
+      const type = tvNavigationEventType(evt.eventType);
       if (type === "focus" || type === "blur") return;
 
       if (state.zone === "sidebar") {
@@ -68,6 +68,7 @@ export default function MainShellTvNav() {
           consumeTvKeyEvent(evt);
           const item = NAV[cur];
           if (!item) return;
+          state.setZone("content");
           routerRef.current.replace(item.href);
           return;
         }

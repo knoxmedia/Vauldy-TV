@@ -63,6 +63,7 @@ export default {
   "search.open_keyboard": "Press OK to enter a search term",
   "search.hint": "Enter a keyword to search all your media.",
   "search.history": "Recent Searches",
+  "search.clear_history": "Clear history",
   "search.loading": "Searching...",
   "search.empty": "No results found for '{query}'.",
   "search.error": "Search failed. Please check your connection and try again.",

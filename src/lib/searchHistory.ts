@@ -26,9 +26,13 @@ export async function loadSearchHistory(): Promise<string[]> {
     const raw = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? normalizeSearchHistory(parsed.filter((item): item is string => typeof item === "string"))
-      : [];
+    if (!Array.isArray(parsed)) return [];
+    const stringValues = parsed.filter((item): item is string => typeof item === "string");
+    const normalized = normalizeSearchHistory(stringValues);
+    if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
+      await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(normalized));
+    }
+    return normalized;
   } catch {
     return [];
   }
@@ -42,4 +46,8 @@ export async function saveSearchHistory(history: readonly string[]): Promise<str
 
 export async function recordSearchHistory(history: readonly string[], query: string): Promise<string[]> {
   return saveSearchHistory(addSearchHistoryEntry(history, query));
+}
+
+export async function clearSearchHistory(): Promise<void> {
+  await AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
 }

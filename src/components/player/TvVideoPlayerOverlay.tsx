@@ -5,6 +5,7 @@ import { useIsFocused } from "@react-navigation/native";
 import { colors, radius, spacing } from "@/constants/theme";
 import { registerTvKeyHandler, consumeTvKeyEvent, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { t } from "@/i18n";
+import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
 
 function formatTime(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return "0:00";
@@ -199,7 +200,7 @@ export default function TvVideoPlayerOverlay({
           <View style={styles.topBar}>
             <Pressable
               focusable={false}
-              onPress={onBack}
+              onPress={TV_NAV_ENABLED ? undefined : onBack}
               style={[styles.backBtn, zone === "back" && styles.backBtnSelected]}
             >
               <Ionicons name="chevron-back" size={26} color={colors.text} />
@@ -224,7 +225,7 @@ export default function TvVideoPlayerOverlay({
                   <Pressable
                     key={item.key}
                     focusable={false}
-                    onPress={item.onPress}
+                    onPress={TV_NAV_ENABLED ? undefined : item.onPress}
                     style={[
                       item.primary ? styles.playBtn : styles.iconBtn,
                       selected && (item.primary ? styles.playBtnSelected : styles.iconBtnSelected),

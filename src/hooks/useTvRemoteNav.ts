@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
-import { consumeTvKeyEvent, registerTvKeyHandler, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { consumeTvKeyEvent, registerTvKeyHandler, tvNavigationEventType, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 
-/** Remote D-pad navigation — only on real TV uiMode, not phones running the same APK. */
+/** Remote D-pad navigation 鈥?only on real TV uiMode, not phones running the same APK. */
 export const TV_NAV_ENABLED = Platform.isTV === true;
 
 type BaseOpts = {
@@ -59,13 +59,8 @@ export function useTvRemoteNav(opts: TvRemoteNavOpts) {
   } = opts;
   const screenFocused = useIsFocused();
   const [index, setIndex] = useState(() => clampIndex(initialIndex, count));
+  // Immediate index for D-pad bounds. Updated ONLY by moveTo / external setIndex 鈥?  // never overwritten from state during render (that clobbers rapid key repeats).
   const indexRef = useRef(index);
-  indexRef.current = index;
-  // Render-confirmed ref — updated ONLY by React render.
-  // onSelect reads this so it always matches the visual highlight.
-  const indexConfirmed = useRef(index);
-  indexConfirmed.current = index;
-
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
   const onExitLeftRef = useRef(opts.onExitLeft);
@@ -86,7 +81,11 @@ export function useTvRemoteNav(opts: TvRemoteNavOpts) {
   }, [screenFocused]);
 
   useEffect(() => {
-    setIndex((prev) => clampIndex(prev, count));
+    setIndex((prev) => {
+      const next = clampIndex(prev, count);
+      indexRef.current = next;
+      return next;
+    });
   }, [count]);
 
   const moveTo = useCallback(
@@ -120,7 +119,7 @@ export function useTvRemoteNav(opts: TvRemoteNavOpts) {
       if (countRef.current <= 0) return;
       if (requireScreenFocus && !screenFocusedRef.current) return;
 
-      const type = evt.eventType;
+      const type = tvNavigationEventType(evt.eventType);
       if (type === "focus" || type === "blur") return;
       const current = indexRef.current;
       const cnt = countRef.current;
@@ -128,8 +127,8 @@ export function useTvRemoteNav(opts: TvRemoteNavOpts) {
 
       if (type === "select") {
         consumeTvKeyEvent(evt);
-        // Use confirmed ref so selected item matches visual highlight.
-        onSelectRef.current?.(indexConfirmed.current);
+        // Select the same authoritative index used by D-pad movement and highlight state.
+        onSelectRef.current?.(indexRef.current);
         return;
       }
 

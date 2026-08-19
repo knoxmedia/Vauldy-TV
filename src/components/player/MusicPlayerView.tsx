@@ -5,8 +5,9 @@ import { useIsFocused } from "@react-navigation/native";
 import { fetchMediaLyrics } from "@/api/client";
 import MusicCoverArt from "@/components/player/MusicCoverArt";
 import { colors, radius, spacing } from "@/constants/theme";
-import { registerTvKeyHandler, consumeTvKeyEvent, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { registerTvKeyHandler, consumeTvKeyEvent, tvNavigationEventType, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { t } from "@/i18n";
+import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
 import { activeLrcIndex, parseLrc } from "@/lib/lrc";
 
 const LYRIC_LINE_HEIGHT = 44;
@@ -134,7 +135,7 @@ export default function MusicPlayerView({
   useEffect(() => {
     const handler = (evt: TvKeyEvent) => {
       if (!isFocused) return;
-      const type = evt.eventType;
+      const type = tvNavigationEventType(evt.eventType);
       const z = zoneRef.current;
       const ci = controlIndexRef.current;
       consumeTvKeyEvent(evt);
@@ -227,7 +228,7 @@ export default function MusicPlayerView({
       <View style={styles.topBar}>
         <Pressable
           focusable={false}
-          onPress={onBack}
+          onPress={TV_NAV_ENABLED ? undefined : onBack}
           style={[styles.topBtn, zone === "back" && styles.topBtnSelected]}
         >
           <Ionicons name="chevron-back" size={28} color={colors.text} />
@@ -270,7 +271,7 @@ export default function MusicPlayerView({
                 key={item.key}
                 focusable={false}
                 disabled={item.disabled}
-                onPress={item.onPress}
+                onPress={TV_NAV_ENABLED ? undefined : item.onPress}
                 style={[
                   item.primary ? styles.playBtn : styles.iconBtn,
                   item.disabled && styles.iconBtnDisabled,

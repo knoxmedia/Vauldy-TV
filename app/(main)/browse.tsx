@@ -11,7 +11,7 @@ import LibraryCard from "@/components/media/LibraryCard";
 import { colors, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
 import { useMainContentNav } from "@/hooks/useMainContentNav";
-import type { TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { tvNavigationEventType, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { useMusicPlayerStore } from "@/store/musicPlayer";
 import { useTvFocusStore } from "@/store/tvFocus";
 
@@ -26,22 +26,18 @@ export default function BrowseScreen() {
 
   const librariesRef = useRef(libraries);
   librariesRef.current = libraries;
+  // Immediate index — only updated by key handlers / focus reset, never clobbered from state.
   const itemIndexRef = useRef(itemIndex);
-  itemIndexRef.current = itemIndex;
   const routerRef = useRef(router);
   routerRef.current = router;
   const setZoneRef = useRef(setZone);
   setZoneRef.current = setZone;
 
-  // Render-confirmed ref — updated ONLY by React render.
-  const itemIndexConfirmed = useRef(itemIndex);
-  itemIndexConfirmed.current = itemIndex;
-
   useFocusEffect(
     useCallback(() => {
       setZone("content");
-      setItemIndex(0);
       itemIndexRef.current = 0;
+      setItemIndex(0);
     }, [setZone]),
   );
 
@@ -54,14 +50,14 @@ export default function BrowseScreen() {
 
   useMainContentNav(
     useCallback((evt: TvKeyEvent) => {
-      const type = evt.eventType;
+      const type = tvNavigationEventType(evt.eventType);
       if (type === "focus" || type === "blur") return false;
 
       const count = librariesRef.current.length;
       if (count === 0) return false;
 
       if (type === "select") {
-        const lib = librariesRef.current[itemIndexConfirmed.current];
+        const lib = librariesRef.current[itemIndexRef.current];
         if (lib) {
           useMusicPlayerStore.getState().setLyricsExpanded(false);
           setZoneRef.current("content");

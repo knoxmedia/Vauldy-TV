@@ -213,7 +213,7 @@ export default function FloatingMusicBar() {
                       key={action.key}
                       focusable={false}
                       disabled={action.disabled}
-                      onPress={action.onPress}
+                      onPress={TV_NAV_ENABLED ? undefined : action.onPress}
                       style={[
                         action.primary ? styles.playBtn : styles.iconBtn,
                         action.disabled && styles.iconBtnDisabled,
