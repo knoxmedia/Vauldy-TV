@@ -161,7 +161,7 @@ export default function HomeScreen() {
         if (hasHist && selectShelf === 0) {
           const h = historyRef.current[selectIdx] as HistoryItem | undefined;
           if (h) {
-            const tParam = h.position > 0 ? `&t=${Math.floor(h.position)}` : "";
+            const tParam = h.position > 0 ? `?t=${Math.floor(h.position)}` : "";
             routerRef.current.push(`/player/${h.media_id}${tParam}`);
           }
         } else if (selectShelf === libShelfIdx) {
@@ -257,7 +257,7 @@ export default function HomeScreen() {
                 aspect="landscape"
                 progress={h.duration > 0 ? (h.position / h.duration) * 100 : 0}
                 onPress={() => {
-                  const tParam = h.position > 0 ? `&t=${Math.floor(h.position)}` : "";
+                  const tParam = h.position > 0 ? `?t=${Math.floor(h.position)}` : "";
                   router.push(`/player/${h.media_id}${tParam}`);
                 }}
               />

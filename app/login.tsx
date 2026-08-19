@@ -18,6 +18,7 @@ type EditField = "username" | "password" | null;
 export default function LoginScreen() {
   const router = useRouter();
   const appName = useConfigStore((s) => s.appName);
+  const setServerUrl = useConfigStore((s) => s.setServerUrl);
   const setToken = useAuthStore((s) => s.setToken);
   const setProfile = useAuthStore((s) => s.setProfile);
   const [username, setUsername] = useState("admin");
@@ -28,9 +29,25 @@ export default function LoginScreen() {
   async function submit() {
     setEditField(null);
     setLoading(true);
+    let token: string;
     try {
-      const token = await login(username, password);
-      setToken(token);
+      token = await login(username.trim(), password);
+    } catch (error: any) {
+      useAuthStore.getState().clearSession();
+      const status = error?.response?.status;
+      if (!status) {
+        setServerUrl(null);
+        setLoading(false);
+        router.replace("/setup");
+        return;
+      }
+      Alert.alert(t(status === 401 ? "login.failure" : "login.server_failure"));
+      setLoading(false);
+      return;
+    }
+
+    setToken(token);
+    try {
       const info = await fetchUserInfo();
       setProfile(info.username, info.role, {
         canPlay: info.can_play,
@@ -38,9 +55,14 @@ export default function LoginScreen() {
         uiLocale: info.ui_locale,
       });
       router.replace("/(main)");
-    } catch {
+    } catch (error: any) {
       useAuthStore.getState().clearSession();
-      Alert.alert(t("login.failure"));
+      if (!error?.response?.status) {
+        setServerUrl(null);
+        router.replace("/setup");
+      } else {
+        Alert.alert(t("login.profile_failure"));
+      }
     } finally {
       setLoading(false);
     }
@@ -103,7 +125,11 @@ export default function LoginScreen() {
           )}
 
           {useScreenKeyboard ? (
-            <FocusablePressable onPress={() => setPassword("admin123")} style={styles.demoFill} focusedStyle={styles.demoFillFocused}>
+            <FocusablePressable onPress={() => {
+                setUsername("admin");
+                setPassword("admin123");
+                setEditField(null);
+              }} style={styles.demoFill} focusedStyle={styles.demoFillFocused}>
               <Text style={styles.demoFillText}>{t("login.fill_demo_password")}</Text>
             </FocusablePressable>
           ) : null}

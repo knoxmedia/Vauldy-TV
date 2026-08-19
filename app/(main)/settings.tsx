@@ -1,7 +1,14 @@
+import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
-import { checkHealth, fetchBranding, logout } from "@/api/client";
+import {
+  checkHealth,
+  connectionFailureDetail,
+  connectionFailureKey,
+  fetchBranding,
+  logout,
+} from "@/api/client";
 import FocusablePressable from "@/components/focus/FocusablePressable";
 import TvUrlField from "@/components/focus/TvUrlField";
 import { Screen } from "@/components/LoadingState";
@@ -9,7 +16,9 @@ import { colors, radius, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
 import { useAuthStore } from "@/store/auth";
 import { normalizeServerUrl, useConfigStore } from "@/store/config";
+import packageJson from "../../package.json";
 
+const appVersion = Constants.expoConfig?.version ?? packageJson.version ?? "unknown";
 const useScreenKeyboard = Platform.OS === "android" || Platform.isTV;
 
 export default function SettingsScreen() {
@@ -24,12 +33,16 @@ export default function SettingsScreen() {
 
   async function saveServer() {
     const normalized = normalizeServerUrl(url);
-    if (!normalized) return;
+    if (!normalized) {
+      Alert.alert(t("setup.invalid_url"));
+      return;
+    }
+    setUrl(normalized);
     setSaving(true);
     try {
-      setServerUrl(normalized);
-      const ok = await checkHealth();
+      const ok = await checkHealth(normalized);
       if (!ok) throw new Error("health");
+      setServerUrl(normalized);
       try {
         const branding = await fetchBranding();
         if (branding.app_name) setAppName(branding.app_name);
@@ -37,10 +50,14 @@ export default function SettingsScreen() {
         /* optional */
       }
       Alert.alert(t("settings.server_saved"));
-    } catch {
+    } catch (error) {
       setServerUrl(serverUrl);
       setUrl(serverUrl || "");
-      Alert.alert(t("setup.failure"));
+      const detail = connectionFailureDetail(error);
+      Alert.alert(
+        t("setup.failure"),
+        `${t(connectionFailureKey(error))}\n\n${normalized}${detail ? `\n${detail}` : ""}`,
+      );
     } finally {
       setSaving(false);
     }
@@ -86,7 +103,7 @@ export default function SettingsScreen() {
               <Text style={styles.secondaryText}>{t("settings.logout")}</Text>
             )}
           </FocusablePressable>
-          <Text style={styles.version}>{t("settings.version")}</Text>
+          <Text style={styles.version}>{t("settings.version", { version: appVersion })}</Text>
         </View>
       </ScrollView>
     </Screen>

@@ -78,8 +78,22 @@ export default function TvOnScreenKeyboard({
             {URL_ROW.map((char) => renderKey(char, () => onChangeText(value + char)))}
           </View>
           <View style={styles.row}>
-            {renderKey("http://", () => onChangeText(value || "http://"), { wide: true })}
-            {renderKey("https://", () => onChangeText(value || "https://"), { wide: true })}
+            {renderKey(
+              "http://",
+              () => {
+                const rest = value.replace(/^https?:\/\//i, "");
+                onChangeText(`http://${rest}`);
+              },
+              { wide: true },
+            )}
+            {renderKey(
+              "https://",
+              () => {
+                const rest = value.replace(/^https?:\/\//i, "");
+                onChangeText(`https://${rest}`);
+              },
+              { wide: true },
+            )}
           </View>
         </>
       ) : null}

@@ -10,6 +10,7 @@ import { useTvFocusStore } from "@/store/tvFocus";
 const NAV: { href: Href; labelKey: string; segment: string | null }[] = [
   { href: "/(main)", labelKey: "tab.home", segment: null },
   { href: "/(main)/browse", labelKey: "tab.browse", segment: "browse" },
+  { href: "/(main)/search" as Href, labelKey: "tab.search", segment: "search" },
   { href: "/(main)/favorites", labelKey: "tab.favorites", segment: "favorites" },
   { href: "/(main)/settings", labelKey: "tab.settings", segment: "settings" },
 ];

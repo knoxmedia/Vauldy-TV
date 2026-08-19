@@ -61,6 +61,13 @@ export default function PlayerScreen() {
   const videoRef = useRef<Video>(null);
   const isAudioRef = useRef(false);
   const didResumeSeek = useRef(false);
+  const pendingFallbackSeek = useRef<number | null>(null);
+  const fallbackAttemptedRef = useRef(false);
+  const fallbackInFlightRef = useRef(false);
+  const generationRef = useRef(0);
+  const activeMediaIdRef = useRef(mediaId);
+  const mountedRef = useRef(true);
+  const uriRef = useRef<string | null>(null);
   const [detail, setDetail] = useState<MediaDetail | null>(null);
   const [uri, setUri] = useState<string | null>(null);
   const [isAudio, setIsAudio] = useState(false);
@@ -125,7 +132,13 @@ export default function PlayerScreen() {
   }, [isAudio, musicMediaId, mediaId, router]);
 
   useEffect(() => {
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    activeMediaIdRef.current = mediaId;
     didResumeSeek.current = false;
+    pendingFallbackSeek.current = null;
+    fallbackAttemptedRef.current = false;
+    fallbackInFlightRef.current = false;
     nearEndTriggeredRef.current = false;
     setNextEpisode(null);
     setNextCountdown(0);
@@ -142,10 +155,23 @@ export default function PlayerScreen() {
     if (!softAudioHandoff) {
       setLoading(true);
       setError(null);
+      uriRef.current = null;
       setUri(null);
       setDetail(null);
     }
+
+    return () => {
+      if (generationRef.current === generation) generationRef.current += 1;
+    };
   }, [mediaId]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      generationRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     if (!series_id) useSeriesPlayStore.getState().clearSession();
@@ -164,11 +190,17 @@ export default function PlayerScreen() {
 
   useEffect(() => {
     let mounted = true;
+    const generation = generationRef.current;
+    const isCurrent = () =>
+      mounted &&
+      mountedRef.current &&
+      generationRef.current === generation &&
+      activeMediaIdRef.current === mediaId;
     (async () => {
       try {
         const mediaDetail = await fetchMediaDetail(mediaId);
         const enriched = mediaDetail.file_type === "audio" ? await enrichMusicDetail(mediaDetail) : mediaDetail;
-        if (!mounted) return;
+        if (!isCurrent()) return;
         setDetail(enriched);
         const audio = enriched.file_type === "audio";
         isAudioRef.current = audio;
@@ -184,6 +216,7 @@ export default function PlayerScreen() {
             mediaPosterSrc(enriched) ||
             "";
           const playUri = mediaPlaySrc(mediaId);
+          uriRef.current = playUri;
           setUri(playUri);
 
           const current = useMusicPlayerStore.getState();
@@ -204,13 +237,18 @@ export default function PlayerScreen() {
         useMusicPlayerStore.getState().pauseForVideo();
         await playbackStart(mediaId);
         const plan = await fetchPlaybackPlan(mediaId);
-        if (plan.hls_master) setUri(withAccessToken(plan.hls_master));
-        else if (plan.fallback) setUri(withAccessToken(plan.fallback));
-        else setUri(mediaPlaySrc(mediaId));
+        if (!isCurrent()) return;
+        const playUri = plan.hls_master
+          ? withAccessToken(plan.hls_master)
+          : plan.fallback
+            ? withAccessToken(plan.fallback)
+            : mediaPlaySrc(mediaId);
+        uriRef.current = playUri;
+        setUri(playUri);
       } catch {
-        if (mounted) setError(t("player.error"));
+        if (isCurrent()) setError(t("player.error"));
       } finally {
-        if (mounted) setLoading(false);
+        if (isCurrent()) setLoading(false);
       }
     })();
 
@@ -293,12 +331,82 @@ export default function PlayerScreen() {
     [resumeT],
   );
 
-  const onPlaybackStatusUpdate = (status: AVPlaybackStatus) => {
-    if (!status.isLoaded) {
-      if (status.error) setError(t("player.error"));
+  const tryFallbackSeek = useCallback(async (status: AVPlaybackStatus & { isLoaded: true }) => {
+    const fallbackPosition = pendingFallbackSeek.current;
+    if (fallbackPosition == null) return;
+    const durSec = (status.durationMillis ?? 0) / 1000;
+    if (durSec <= 0) return;
+    pendingFallbackSeek.current = null;
+    didResumeSeek.current = true;
+    const target = Math.min(fallbackPosition, Math.max(0, durSec - 1));
+    try {
+      await videoRef.current?.setPositionAsync(target * 1000);
+      lastPosition.current = target;
+      setPosition(target);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const handleVideoPlaybackError = useCallback(() => {
+    if (!mountedRef.current || isAudioRef.current || activeMediaIdRef.current !== mediaId) return;
+    if (fallbackInFlightRef.current) return;
+    if (fallbackAttemptedRef.current) {
+      setLoading(false);
+      setError(t("player.error"));
       return;
     }
-    void tryResumeSeek(status);
+
+    fallbackAttemptedRef.current = true;
+    fallbackInFlightRef.current = true;
+    const generation = generationRef.current;
+    const failedUri = uriRef.current;
+    const fallbackPosition = lastPosition.current;
+    setError(null);
+    setLoading(true);
+
+    void fetchPlaybackPlan(mediaId, { forceTranscode: true })
+      .then((plan) => {
+        if (
+          !mountedRef.current ||
+          generationRef.current !== generation ||
+          activeMediaIdRef.current !== mediaId
+        ) return;
+        const hlsUri = plan.hls_master ? withAccessToken(plan.hls_master) : null;
+        if (!hlsUri || hlsUri === failedUri) {
+          setError(t("player.error"));
+          return;
+        }
+        pendingFallbackSeek.current = fallbackPosition > 0 ? fallbackPosition : null;
+        uriRef.current = hlsUri;
+        setUri(hlsUri);
+      })
+      .catch(() => {
+        if (
+          mountedRef.current &&
+          generationRef.current === generation &&
+          activeMediaIdRef.current === mediaId
+        ) setError(t("player.error"));
+      })
+      .finally(() => {
+        if (
+          mountedRef.current &&
+          generationRef.current === generation &&
+          activeMediaIdRef.current === mediaId
+        ) {
+          fallbackInFlightRef.current = false;
+          setLoading(false);
+        }
+      });
+  }, [mediaId]);
+
+  const onPlaybackStatusUpdate = (status: AVPlaybackStatus) => {
+    if (!status.isLoaded) {
+      if (status.error) handleVideoPlaybackError();
+      return;
+    }
+    if (pendingFallbackSeek.current != null) void tryFallbackSeek(status);
+    else void tryResumeSeek(status);
     const pos = status.positionMillis / 1000;
     lastPosition.current = pos;
     setPosition(pos);
@@ -554,7 +662,7 @@ export default function PlayerScreen() {
         resizeMode={ResizeMode.CONTAIN}
         shouldPlay
         onPlaybackStatusUpdate={onPlaybackStatusUpdate}
-        onError={() => setError(t("player.error"))}
+        onError={handleVideoPlaybackError}
       />
       {/*
         Android TV: useTVEventHandler only receives keys if at least one focusable
