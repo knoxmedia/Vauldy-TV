@@ -13,14 +13,26 @@
 
 export type TvKeyEvent = {
   eventType: string;
+  /** react-native-tvos: 0=key down, 1=key up, -1/undefined=unspecified. */
+  eventKeyAction?: number;
   _consumed?: boolean;
   [key: string]: unknown;
 };
+
+/** Treat react-native-tvos long/repeat D-pad events as normal navigation directions. */
+export function tvNavigationEventType(type: string): string {
+  if (type === "longUp") return "up";
+  if (type === "longDown") return "down";
+  if (type === "longLeft") return "left";
+  if (type === "longRight") return "right";
+  return type;
+}
 
 type Handler = (evt: TvKeyEvent) => void;
 
 const handlers = new Set<Handler>();
 const priorityHandlers = new Set<Handler>();
+const pressedKeys = new Set<string>();
 
 /** Register a normal handler. Returns an unsubscribe function. */
 export function registerTvKeyHandler(handler: Handler): () => void {
@@ -45,6 +57,17 @@ export function consumeTvKeyEvent(evt: TvKeyEvent) {
 
 /** Dispatch an event to all registered handlers (stops at first consumed). */
 export function dispatchTvKeyEvent(evt: TvKeyEvent) {
+  // Remote implementations differ: some emit down+up, some only key-up, and
+  // some omit eventKeyAction. Process key-down immediately; suppress key-up only
+  // when it pairs with a down we already handled. Release-only remotes still work.
+  const key = evt.eventType;
+  if (evt.eventKeyAction === 0) {
+    pressedKeys.add(key);
+  } else if (evt.eventKeyAction === 1 && pressedKeys.has(key)) {
+    pressedKeys.delete(key);
+    return;
+  }
+
   evt._consumed = false;
   for (const h of priorityHandlers) {
     if (evt._consumed) break;

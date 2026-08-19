@@ -13,7 +13,7 @@ import {
 } from "@/api/client";
 import { useTvBackHandler } from "@/components/focus/TvBackButton";
 import LoadingState, { Screen } from "@/components/LoadingState";
-import { consumeTvKeyEvent, registerTvKeyHandler, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { consumeTvKeyEvent, registerTvKeyHandler, tvNavigationEventType, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
 import { useMusicPreviewBar } from "@/hooks/useMusicPreviewBar";
 import { colors, spacing } from "@/constants/theme";
@@ -139,7 +139,7 @@ export default function ReaderScreen() {
       if (!isFocusedRef.current) return;
       if (modeRef.current !== "pdf") return;
 
-      const type = evt.eventType;
+      const type = tvNavigationEventType(evt.eventType);
       if (type !== "left" && type !== "right") return;
 
       const cur = pageRef.current;

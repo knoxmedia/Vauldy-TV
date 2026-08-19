@@ -12,6 +12,7 @@ const NAV: { href: Href; labelKey: string; segment: string | null }[] = [
   { href: "/(main)/browse", labelKey: "tab.browse", segment: "browse" },
   { href: "/(main)/search" as Href, labelKey: "tab.search", segment: "search" },
   { href: "/(main)/favorites", labelKey: "tab.favorites", segment: "favorites" },
+  { href: "/(main)/history" as Href, labelKey: "tab.history", segment: "history" },
   { href: "/(main)/settings", labelKey: "tab.settings", segment: "settings" },
 ];
 
@@ -62,14 +63,14 @@ export default function Sidebar() {
       <Text style={styles.brand}>{appName}</Text>
       <View style={styles.nav}>
         {NAV.map((item, index) => {
-          // When in sidebar zone, highlight follows the D-pad focus.
-          // Otherwise highlight follows the active route.
-          const active = inSidebar ? sidebarIndex === index : routeIndex === index;
+          // The screen must have exactly one focus highlight. Route identity is
+          // not rendered as focus once the D-pad moves into content.
+          const active = inSidebar && sidebarIndex === index;
           return (
             <Pressable
               key={String(item.href)}
               focusable={!TV_NAV_ENABLED}
-              onPress={() => navigateTo(index)}
+              onPress={TV_NAV_ENABLED ? undefined : () => navigateTo(index)}
               style={[
                 styles.navItem,
                 active ? styles.navItemActive : undefined,

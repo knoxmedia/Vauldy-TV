@@ -3,6 +3,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, radius, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
+import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
 
 type Props = {
   visible: boolean;
@@ -69,14 +70,14 @@ export default function NextEpisodeOverlay({
         <View style={styles.actions}>
           <Pressable
             focusable={false}
-            onPress={onPlayNow}
+            onPress={TV_NAV_ENABLED ? undefined : onPlayNow}
             style={[styles.btn, focusIndex === 0 && styles.btnSelected]}
           >
             <Text style={styles.btnText}>{t("series.play_now")}</Text>
           </Pressable>
           <Pressable
             focusable={false}
-            onPress={onCancel}
+            onPress={TV_NAV_ENABLED ? undefined : onCancel}
             style={[styles.btn, focusIndex === 1 && styles.btnSelected]}
           >
             <Text style={styles.btnText}>{t("series.cancel")}</Text>

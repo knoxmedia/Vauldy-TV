@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
-import FocusablePressable from "@/components/focus/FocusablePressable";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import TvOnScreenKeyboard from "@/components/focus/TvOnScreenKeyboard";
 import TvTextInput from "@/components/focus/TvTextInput";
 import { colors, radius, spacing } from "@/constants/theme";
@@ -14,10 +13,27 @@ type Props = {
   placeholder?: string;
   preferredFocus?: boolean;
   onSubmit?: () => void;
+  tvSelected?: boolean;
+  keyboardOpen?: boolean;
+  onKeyboardOpenChange?: (open: boolean) => void;
 };
 
-export default function TvUrlField({ value, onChangeText, placeholder, preferredFocus, onSubmit }: Props) {
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
+export default function TvUrlField({
+  value,
+  onChangeText,
+  placeholder,
+  preferredFocus,
+  onSubmit,
+  tvSelected,
+  keyboardOpen: controlledKeyboardOpen,
+  onKeyboardOpenChange,
+}: Props) {
+  const [internalKeyboardOpen, setInternalKeyboardOpen] = useState(false);
+  const keyboardOpen = controlledKeyboardOpen ?? internalKeyboardOpen;
+  const setKeyboardOpen = (open: boolean) => {
+    if (controlledKeyboardOpen === undefined) setInternalKeyboardOpen(open);
+    onKeyboardOpenChange?.(open);
+  };
 
   if (!useScreenKeyboard) {
     return (
@@ -37,17 +53,15 @@ export default function TvUrlField({ value, onChangeText, placeholder, preferred
 
   return (
     <View style={styles.wrap}>
-      <FocusablePressable
-        preferredFocus={preferredFocus && !keyboardOpen}
-        onPress={() => setKeyboardOpen(true)}
-        style={[styles.display, keyboardOpen && styles.displayActive]}
-        focusedStyle={styles.displayFocused}
+      <Pressable
+        focusable={false}
+        style={[styles.display, keyboardOpen && !Platform.isTV && styles.displayActive, tvSelected && styles.displayFocused]}
       >
         <Text style={[styles.displayText, !value && styles.placeholder]} numberOfLines={2}>
           {value || placeholder || ""}
         </Text>
         {!keyboardOpen ? <Text style={styles.tapHint}>{t("keyboard.tap_to_edit")}</Text> : null}
-      </FocusablePressable>
+      </Pressable>
       {keyboardOpen ? (
         <TvOnScreenKeyboard
           variant="url"

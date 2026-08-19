@@ -5,6 +5,7 @@ import { useIsFocused } from "@react-navigation/native";
 import { colors, radius, spacing } from "@/constants/theme";
 import { registerTvKeyHandler, consumeTvKeyEvent, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { t } from "@/i18n";
+import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
 
 function formatTime(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return "0:00";
@@ -32,9 +33,12 @@ type Props = {
   playing: boolean;
   position: number;
   duration: number;
+  subtitleLabel?: string;
+  subtitleText?: string;
   onTogglePlay: () => void;
   onSeekBy: (deltaSec: number) => void;
   onStop: () => void;
+  onCycleSubtitle?: () => void;
   onBack: () => void;
   onInteraction: () => void;
 };
@@ -45,9 +49,12 @@ export default function TvVideoPlayerOverlay({
   playing,
   position,
   duration,
+  subtitleLabel,
+  subtitleText,
   onTogglePlay,
   onSeekBy,
   onStop,
+  onCycleSubtitle,
   onBack,
   onInteraction,
 }: Props) {
@@ -55,8 +62,8 @@ export default function TvVideoPlayerOverlay({
   const [zone, setZone] = useState<FocusZone>("progress");
   const [controlIndex, setControlIndex] = useState(0);
 
-  const controls = useMemo<ControlItem[]>(
-    () => [
+  const controls = useMemo<ControlItem[]>(() => {
+    const items: ControlItem[] = [
       {
         key: "rewind",
         icon: "play-back",
@@ -85,9 +92,18 @@ export default function TvVideoPlayerOverlay({
         label: t("player.stop"),
         onPress: onStop,
       },
-    ],
-    [onSeekBy, onStop, onTogglePlay, playing],
-  );
+    ];
+    if (onCycleSubtitle) {
+      items.push({
+        key: "subtitle",
+        icon: "text",
+        iconSize: 24,
+        label: subtitleLabel || t("player.subtitles"),
+        onPress: onCycleSubtitle,
+      });
+    }
+    return items;
+  }, [onCycleSubtitle, onSeekBy, onStop, onTogglePlay, playing, subtitleLabel]);
 
   useEffect(() => {
     if (visible) {
@@ -168,64 +184,101 @@ export default function TvVideoPlayerOverlay({
     return registerTvKeyHandler(handler);
   }, [isFocused, visible, onInteraction, onBack, onTogglePlay, onSeekBy]);
 
-  if (!visible) return null;
-
   const progress = duration > 0 ? Math.min(100, (position / duration) * 100) : 0;
+  const cue = (subtitleText || "").trim();
 
   return (
-    <View style={styles.overlay} pointerEvents="box-none">
-      <View style={styles.topBar}>
-        <Pressable
-          focusable={false}
-          onPress={onBack}
-          style={[styles.backBtn, zone === "back" && styles.backBtnSelected]}
-        >
-          <Ionicons name="chevron-back" size={26} color={colors.text} />
-          <Text style={styles.backText}>{t("common.back")}</Text>
-        </Pressable>
-        <Text style={styles.title} numberOfLines={1}>
-          {title}
-        </Text>
-      </View>
+    <View style={styles.overlayRoot} pointerEvents="box-none">
+      {cue ? (
+        <View style={[styles.cueWrap, visible && styles.cueWrapRaised]} pointerEvents="none">
+          <Text style={styles.cueText}>{cue}</Text>
+        </View>
+      ) : null}
 
-      <View style={styles.bottom}>
-        <View style={[styles.progressTrack, zone === "progress" && styles.progressTrackSelected]}>
-          <View style={[styles.progressFill, { width: `${progress}%` }]} />
+      {visible ? (
+        <View style={styles.overlay} pointerEvents="box-none">
+          <View style={styles.topBar}>
+            <Pressable
+              focusable={false}
+              onPress={TV_NAV_ENABLED ? undefined : onBack}
+              style={[styles.backBtn, zone === "back" && styles.backBtnSelected]}
+            >
+              <Ionicons name="chevron-back" size={26} color={colors.text} />
+              <Text style={styles.backText}>{t("common.back")}</Text>
+            </Pressable>
+            <Text style={styles.title} numberOfLines={1}>
+              {title}
+            </Text>
+          </View>
+
+          <View style={styles.bottom}>
+            <View style={[styles.progressTrack, zone === "progress" && styles.progressTrackSelected]}>
+              <View style={[styles.progressFill, { width: `${progress}%` }]} />
+            </View>
+            <Text style={styles.timeText}>
+              {formatTime(position)} / {formatTime(duration)}
+            </Text>
+            <View style={styles.controls}>
+              {controls.map((item, index) => {
+                const selected = zone === "controls" && controlIndex === index;
+                return (
+                  <Pressable
+                    key={item.key}
+                    focusable={false}
+                    onPress={TV_NAV_ENABLED ? undefined : item.onPress}
+                    style={[
+                      item.primary ? styles.playBtn : styles.iconBtn,
+                      selected && (item.primary ? styles.playBtnSelected : styles.iconBtnSelected),
+                    ]}
+                  >
+                    <Ionicons name={item.icon} size={item.iconSize ?? 24} color={item.primary ? "#fff" : colors.text} />
+                    {item.label ? (
+                      <Text style={styles.hint} numberOfLines={1}>
+                        {item.label}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.helpText}>{t("player.video_nav_hint")}</Text>
+          </View>
         </View>
-        <Text style={styles.timeText}>
-          {formatTime(position)} / {formatTime(duration)}
-        </Text>
-        <View style={styles.controls}>
-          {controls.map((item, index) => {
-            const selected = zone === "controls" && controlIndex === index;
-            return (
-              <Pressable
-                key={item.key}
-                focusable={false}
-                onPress={item.onPress}
-                style={[
-                  item.primary ? styles.playBtn : styles.iconBtn,
-                  selected && (item.primary ? styles.playBtnSelected : styles.iconBtnSelected),
-                ]}
-              >
-                <Ionicons name={item.icon} size={item.iconSize ?? 24} color={item.primary ? "#fff" : colors.text} />
-                {item.label ? <Text style={styles.hint}>{item.label}</Text> : null}
-              </Pressable>
-            );
-          })}
-        </View>
-        <Text style={styles.helpText}>{t("player.video_nav_hint")}</Text>
-      </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  overlayRoot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "space-between",
     backgroundColor: "rgba(0,0,0,0.5)",
-    zIndex: 20,
+  },
+  cueWrap: {
+    position: "absolute",
+    left: spacing.xl,
+    right: spacing.xl,
+    bottom: 48,
+    alignItems: "center",
+  },
+  cueWrapRaised: {
+    bottom: 220,
+  },
+  cueText: {
+    color: "#fff",
+    fontSize: 28,
+    fontWeight: "600",
+    textAlign: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: radius.sm,
+    overflow: "hidden",
   },
   topBar: {
     paddingTop: spacing.lg,
@@ -285,8 +338,9 @@ const styles = StyleSheet.create({
   iconBtn: {
     alignItems: "center",
     justifyContent: "center",
-    width: 72,
+    minWidth: 72,
     height: 72,
+    paddingHorizontal: 8,
     borderRadius: radius.md,
     backgroundColor: colors.overlay,
     borderWidth: 2,
@@ -310,6 +364,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     borderColor: "#fff",
   },
-  hint: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  hint: { color: colors.textMuted, fontSize: 12, marginTop: 2, maxWidth: 88, textAlign: "center" },
   helpText: { color: colors.textMuted, fontSize: 14, textAlign: "center", marginTop: spacing.sm },
 });

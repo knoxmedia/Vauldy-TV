@@ -34,6 +34,7 @@
     "expo-secure-store": "~14.0.1",
     "expo-status-bar": "~2.0.1",
     "pdfjs-dist": "3.11.174",
+    "pinyin-pro": "^3.29.3",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-native": "npm:react-native-tvos@0.76.9-0",

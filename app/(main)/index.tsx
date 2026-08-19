@@ -11,10 +11,14 @@ import MediaCard from "@/components/media/MediaCard";
 import { colors, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
 import { useMainContentNav } from "@/hooks/useMainContentNav";
-import type { TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { tvNavigationEventType, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { ensureCanPlay } from "@/lib/playbackGate";
 import { useConfigStore } from "@/store/config";
+import { peekContentFocus, saveContentFocus } from "@/store/contentFocus";
 import { useMusicPlayerStore } from "@/store/musicPlayer";
 import { useTvFocusStore } from "@/store/tvFocus";
+
+const FOCUS_KEY = "home";
 
 function historyToMediaItem(h: HistoryItem): MediaItem {
   return {
@@ -56,11 +60,10 @@ export default function HomeScreen() {
   const librariesShelfIndex = hasHistory ? 1 : 0;
   const recentShelfIndex = librariesShelfIndex + 1;
 
-  // All refs — declared before any effect that reads them.
+  // Immediate refs 鈥?updated ONLY by key handlers / restore, never clobbered from state
+  // during render (rapid D-pad repeats would otherwise lose focus steps).
   const activeShelfRef = useRef(activeShelf);
-  activeShelfRef.current = activeShelf;
   const itemIndexRef = useRef(itemIndex);
-  itemIndexRef.current = itemIndex;
   const historyRef = useRef(history);
   historyRef.current = history;
   const librariesRef = useRef(libraries);
@@ -83,13 +86,6 @@ export default function HomeScreen() {
   librariesShelfIndexRef.current = librariesShelfIndex;
   const recentShelfIndexRef = useRef(recentShelfIndex);
   recentShelfIndexRef.current = recentShelfIndex;
-
-  // Render-confirmed refs — updated ONLY by React render, NOT by key handlers.
-  // Select handler and data check read these so they always match the visual highlight.
-  const activeShelfConfirmed = useRef(activeShelf);
-  activeShelfConfirmed.current = activeShelf;
-  const itemIndexConfirmed = useRef(itemIndex);
-  itemIndexConfirmed.current = itemIndex;
 
   const load = useCallback(async () => {
     const [libR, histR] = await Promise.allSettled([
@@ -118,49 +114,71 @@ export default function HomeScreen() {
     setRecent(recentItems.slice(0, 12));
   }, []);
 
+  const pendingRestore = useRef(peekContentFocus(FOCUS_KEY));
+  const didApplyFocus = useRef(false);
+
   useFocusEffect(
     useCallback(() => {
       setZone("content");
-      const libShelf = hasHistoryRef.current ? librariesShelfIndexRef.current : 0;
-      activeShelfRef.current = libShelf;
-      itemIndexRef.current = 0;
-      setActiveShelf(libShelf);
-      setItemIndex(0);
+      pendingRestore.current = peekContentFocus(FOCUS_KEY);
+      didApplyFocus.current = false;
       setLoading(true);
       load().finally(() => setLoading(false));
     }, [load, setZone]),
   );
 
+  // Apply focus restore / default once per visit after data is ready 鈥?do not reset
+  // on later shelf-count changes while the user is already navigating.
+  useEffect(() => {
+    if (loading || didApplyFocus.current) return;
+    didApplyFocus.current = true;
+    const saved = pendingRestore.current;
+    pendingRestore.current = null;
+    const maxShelf = (hasHistory ? 1 : 0) + (hasRecent ? 1 : 0);
+    if (saved) {
+      const shelf = Math.max(0, Math.min(saved.shelf ?? 0, maxShelf));
+      const nextIndex = Math.max(0, saved.index);
+      activeShelfRef.current = shelf;
+      itemIndexRef.current = nextIndex;
+      setActiveShelf(shelf);
+      setItemIndex(nextIndex);
+      return;
+    }
+    const libShelf = hasHistory ? librariesShelfIndex : 0;
+    activeShelfRef.current = libShelf;
+    itemIndexRef.current = 0;
+    setActiveShelf(libShelf);
+    setItemIndex(0);
+  }, [loading, hasHistory, hasRecent, librariesShelfIndex]);
+
   useMainContentNav(
     useCallback((evt: TvKeyEvent) => {
-      const type = evt.eventType;
+      const type = tvNavigationEventType(evt.eventType);
       if (type === "focus" || type === "blur") return false;
 
-      // Use confirmed refs for data check + select (matches visual).
-      // Use immediate refs for direction key bound checking.
       const hasHist = hasHistoryRef.current;
       const hasRec = hasRecentRef.current;
       const libShelfIdx = librariesShelfIndexRef.current;
       const recShelfIdx = recentShelfIndexRef.current;
       const shelfCount = (hasHist ? 1 : 0) + 1 + (hasRec ? 1 : 0);
 
-      // Data check uses confirmed shelf (matches visual).
-      const visShelf = activeShelfConfirmed.current;
-      let data: readonly unknown[];
-      if (hasHist && visShelf === 0) data = historyRef.current;
-      else if (visShelf === libShelfIdx) data = librariesRef.current;
-      else if (hasRec && visShelf === recShelfIdx) data = recentRef.current;
-      else data = [];
-
-      if (data.length === 0) return false;
+      const shelfData = (shelf: number): readonly unknown[] => {
+        if (hasHist && shelf === 0) return historyRef.current;
+        if (shelf === libShelfIdx) return librariesRef.current;
+        if (hasRec && shelf === recShelfIdx) return recentRef.current;
+        return [];
+      };
 
       if (type === "select") {
-        // Select uses confirmed refs — always matches what's visually highlighted.
-        const selectShelf = activeShelfConfirmed.current;
-        const selectIdx = itemIndexConfirmed.current;
+        // Select the same authoritative focus target used by D-pad movement.
+        const selectShelf = activeShelfRef.current;
+        const selectIdx = itemIndexRef.current;
+        if (shelfData(selectShelf).length === 0) return false;
+        saveContentFocus(FOCUS_KEY, { shelf: selectShelf, index: selectIdx });
         if (hasHist && selectShelf === 0) {
           const h = historyRef.current[selectIdx] as HistoryItem | undefined;
           if (h) {
+            if (!ensureCanPlay()) return true;
             const tParam = h.position > 0 ? `?t=${Math.floor(h.position)}` : "";
             routerRef.current.push(`/player/${h.media_id}${tParam}`);
           }
@@ -178,8 +196,10 @@ export default function HomeScreen() {
         return true;
       }
 
-      // Direction keys use immediate refs for responsive bound checking.
+      // Direction keys use immediate refs + that shelf's data for bounds.
       const shelf = activeShelfRef.current;
+      const data = shelfData(shelf);
+      if (data.length === 0) return false;
 
       if (type === "left") {
         if (itemIndexRef.current > 0) {
@@ -234,9 +254,10 @@ export default function HomeScreen() {
   if (loading) return <LoadingState label={t("common.loading")} />;
 
   // Compute which item is highlighted on each shelf.
-  const histFocus = hasHistory && activeShelf === 0 ? itemIndex : -1;
-  const libFocus = activeShelf === librariesShelfIndex ? itemIndex : -1;
-  const recentFocus = hasRecent && activeShelf === recentShelfIndex ? itemIndex : -1;
+  const contentFocused = zone === "content";
+  const histFocus = contentFocused && hasHistory && activeShelf === 0 ? itemIndex : -1;
+  const libFocus = contentFocused && activeShelf === librariesShelfIndex ? itemIndex : -1;
+  const recentFocus = contentFocused && hasRecent && activeShelf === recentShelfIndex ? itemIndex : -1;
 
   return (
     <Screen>
@@ -257,6 +278,8 @@ export default function HomeScreen() {
                 aspect="landscape"
                 progress={h.duration > 0 ? (h.position / h.duration) * 100 : 0}
                 onPress={() => {
+                  saveContentFocus(FOCUS_KEY, { shelf: 0, index: history.findIndex((x) => x.media_id === h.media_id) });
+                  if (!ensureCanPlay()) return;
                   const tParam = h.position > 0 ? `?t=${Math.floor(h.position)}` : "";
                   router.push(`/player/${h.media_id}${tParam}`);
                 }}
@@ -277,6 +300,10 @@ export default function HomeScreen() {
               library={lib}
               tvSelected={selected}
               onPress={() => {
+                saveContentFocus(FOCUS_KEY, {
+                  shelf: librariesShelfIndex,
+                  index: libraries.findIndex((x) => x.id === lib.id),
+                });
                 useMusicPlayerStore.getState().setLyricsExpanded(false);
                 setZone("content");
                 router.push(`/library/${lib.id}`);
@@ -292,7 +319,17 @@ export default function HomeScreen() {
             focusIndex={recentFocus}
             keyExtractor={(item) => String(item.id)}
             renderItem={(item, _i, { selected }) => (
-              <MediaCard tvSelected={selected} item={item} onPress={() => router.push(`/media/${item.id}`)} />
+              <MediaCard
+                tvSelected={selected}
+                item={item}
+                onPress={() => {
+                  saveContentFocus(FOCUS_KEY, {
+                    shelf: recentShelfIndex,
+                    index: recent.findIndex((x) => x.id === item.id),
+                  });
+                  router.push(`/media/${item.id}`);
+                }}
+              />
             )}
           />
         ) : null}

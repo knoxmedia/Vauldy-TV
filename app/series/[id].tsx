@@ -18,6 +18,7 @@ import { colors, radius, spacing } from "@/constants/theme";
 import { TV_NAV_ENABLED, useTvRemoteNav } from "@/hooks/useTvRemoteNav";
 import { t } from "@/i18n";
 import { normalizeListPosterUrl, withAccessToken } from "@/lib/mediaUrl";
+import { ensureCanPlay } from "@/lib/playbackGate";
 import {
   fetchSeriesEpisodeMediaOrder,
   pickPrimaryEpisodeMediaId,
@@ -35,6 +36,7 @@ async function startSeriesPlayback(opts: {
   positionSec?: number;
   router: ReturnType<typeof useRouter>;
 }) {
+  if (!ensureCanPlay()) return;
   const { order, episodes } = await fetchSeriesEpisodeMediaOrder(opts.seasons);
   useSeriesPlayStore.getState().setSession(opts.seriesId, order, episodes);
   const index = opts.indexInOrder ?? Math.max(0, order.indexOf(opts.mediaId));
@@ -157,6 +159,7 @@ export default function SeriesDetailScreen() {
   }, [playTarget, router, seasons, seriesId]);
 
   const onPlayFromStart = useCallback(async () => {
+    if (!ensureCanPlay()) return;
     const { order, episodes } = await fetchSeriesEpisodeMediaOrder(seasons);
     if (order.length === 0) return;
     const mediaId = order[0]!;
@@ -335,7 +338,7 @@ export default function SeriesDetailScreen() {
           <View style={styles.actions}>
             <Pressable
               focusable={!TV_NAV_ENABLED}
-              onPress={() => void onContinue()}
+              onPress={TV_NAV_ENABLED ? undefined : () => void onContinue()}
               style={[
                 styles.primaryBtn,
                 actionsSelected && actionIndex === 0 && styles.btnSelected,
@@ -345,7 +348,7 @@ export default function SeriesDetailScreen() {
             </Pressable>
             <Pressable
               focusable={!TV_NAV_ENABLED}
-              onPress={() => void onPlayFromStart()}
+              onPress={TV_NAV_ENABLED ? undefined : () => void onPlayFromStart()}
               style={[
                 styles.secondaryBtn,
                 actionsSelected && actionIndex === 1 && styles.btnSelected,
@@ -365,7 +368,7 @@ export default function SeriesDetailScreen() {
                 <Pressable
                   key={season.id}
                   focusable={!TV_NAV_ENABLED}
-                  onPress={() => {
+                  onPress={TV_NAV_ENABLED ? undefined : () => {
                     setSeasonIndex(i);
                     setFocusZone("seasons");
                   }}

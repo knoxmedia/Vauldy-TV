@@ -8,6 +8,7 @@ import GlobalMusicEngine from "@/components/player/GlobalMusicEngine";
 import { useAppExitConfirm } from "@/hooks/useAppExitConfirm";
 import { dispatchTvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
+import { resolveLocale } from "@/i18n";
 import { useAuthStore } from "@/store/auth";
 import { useConfigStore } from "@/store/config";
 
@@ -38,6 +39,8 @@ function useProtectedRoute() {
 export default function RootLayout() {
   useProtectedRoute();
   useAppExitConfirm();
+  const uiLocale = useAuthStore((s) => s.uiLocale);
+  const localeKey = uiLocale || resolveLocale();
 
   // Single global TV event handler — dispatches to all registered useTvRemoteNav instances.
   useTVEventHandler((evt) => {
@@ -45,7 +48,7 @@ export default function RootLayout() {
   });
 
   return (
-    <View style={styles.root}>
+    <View key={localeKey} style={styles.root}>
       <StatusBar style="light" />
       {TV_NAV_ENABLED ? (
         <Pressable focusable hasTVPreferredFocus accessible style={styles.tvEventSink} />
@@ -66,6 +69,7 @@ export default function RootLayout() {
         <Stack.Screen name="player/[id]" options={{ presentation: "fullScreenModal" }} />
         <Stack.Screen name="reader/[id]" />
         <Stack.Screen name="photo/[id]" options={{ presentation: "fullScreenModal" }} />
+        <Stack.Screen name="about" />
       </Stack>
       <GlobalMusicEngine />
       <FloatingMusicBar />

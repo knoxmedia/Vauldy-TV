@@ -10,6 +10,7 @@ import type {
   Library,
   MediaDetail,
   MediaItem,
+  MediaSubtitleRow,
   MusicTrackRow,
   PlaybackPlan,
   ReadProgress,
@@ -196,6 +197,15 @@ export type MediaLyricsResponse = {
 export async function fetchMediaLyrics(mediaId: number): Promise<MediaLyricsResponse> {
   const { data } = await api.get<MediaLyricsResponse>(`/api/v1/media/${mediaId}/lyrics`);
   return data ?? { lrc: "", source: "" };
+}
+
+export async function fetchMediaSubtitles(mediaId: number): Promise<MediaSubtitleRow[]> {
+  const { data } = await api.get<{ items?: MediaSubtitleRow[] }>(`/api/v1/media/${mediaId}/subtitles`);
+  return (data?.items ?? []).filter((row) => row.id > 0);
+}
+
+export function mediaSubtitleVttPath(mediaId: number, subtitleId: number): string {
+  return `/api/v1/media/${mediaId}/subtitles/${subtitleId}/vtt`;
 }
 
 export function dedupeUserHistory(items: HistoryItem[]): HistoryItem[] {
