@@ -11,7 +11,6 @@ import MediaCard from "@/components/media/MediaCard";
 import MusicTrackList from "@/components/music/MusicTrackList";
 import SeriesCard from "@/components/series/SeriesCard";
 import { colors, spacing } from "@/constants/theme";
-import { SIDEBAR_WIDTH } from "@/constants/layout";
 import { useTvRemoteNav } from "@/hooks/useTvRemoteNav";
 import { isMusicLibraryType, isPhotoLibraryType, isTVLibraryType, libraryFileType } from "@/lib/library";
 import { useTvFocusStore } from "@/store/tvFocus";
@@ -53,7 +52,7 @@ export default function LibraryScreen() {
 
   const gridLayout = useMemo(() => {
     const horizontalPadding = spacing.lg * 2;
-    const availableWidth = Math.max(0, screenWidth - SIDEBAR_WIDTH - horizontalPadding);
+    const availableWidth = Math.max(0, screenWidth - horizontalPadding);
     const itemWidth = Math.floor((availableWidth - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS);
     return { itemWidth };
   }, [screenWidth]);

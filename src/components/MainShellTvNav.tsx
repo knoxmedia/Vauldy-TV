@@ -10,6 +10,7 @@ import { useTvFocusStore } from "@/store/tvFocus";
 const NAV: { href: Href; segment: string | null }[] = [
   { href: "/(main)", segment: null },
   { href: "/(main)/browse", segment: "browse" },
+  { href: "/(main)/search" as Href, segment: "search" },
   { href: "/(main)/favorites", segment: "favorites" },
   { href: "/(main)/settings", segment: "settings" },
 ];

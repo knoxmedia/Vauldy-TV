@@ -9,7 +9,7 @@ export type TvContentKeyHandler = (evt: TvKeyEvent) => boolean;
 type TvFocusState = {
   zone: TvFocusZone;
   setZone: (zone: TvFocusZone) => void;
-  /** Sidebar highlight index (0=home, 1=browse, 2=favorites, 3=settings). */
+  /** Sidebar highlight index (0=home, 1=browse, 2=search, 3=favorites, 4=settings). */
   sidebarIndex: number;
   setSidebarIndex: (index: number) => void;
   /** Active main-tab content handler — only the focused screen registers. */
