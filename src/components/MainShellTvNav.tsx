@@ -4,6 +4,7 @@ import { Alert, BackHandler } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { consumeTvKeyEvent, registerPriorityTvKeyHandler, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { t } from "@/i18n";
+import { exitApp } from "@/lib/exitApp";
 import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
 import { useTvFocusStore } from "@/store/tvFocus";
 
@@ -115,7 +116,7 @@ export default function MainShellTvNav() {
       if (state.zone === "sidebar") {
         Alert.alert(t("app.exit_title"), t("app.exit_message"), [
           { text: t("common.cancel"), style: "cancel" },
-          { text: t("app.exit_confirm"), style: "destructive", onPress: () => BackHandler.exitApp() },
+          { text: t("app.exit_confirm"), style: "destructive", onPress: () => exitApp() },
         ]);
         return true;
       }

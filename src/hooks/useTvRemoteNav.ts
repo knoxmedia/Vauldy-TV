@@ -3,7 +3,8 @@ import { Platform } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { consumeTvKeyEvent, registerTvKeyHandler, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 
-export const TV_NAV_ENABLED = Platform.OS === "android" || Platform.isTV;
+/** Remote D-pad navigation — only on real TV uiMode, not phones running the same APK. */
+export const TV_NAV_ENABLED = Platform.isTV === true;
 
 type BaseOpts = {
   count: number;

@@ -69,7 +69,7 @@ export default function Sidebar() {
             <Pressable
               key={String(item.href)}
               focusable={!TV_NAV_ENABLED}
-              onPress={TV_NAV_ENABLED ? undefined : () => navigateTo(index)}
+              onPress={() => navigateTo(index)}
               style={[
                 styles.navItem,
                 active ? styles.navItemActive : undefined,

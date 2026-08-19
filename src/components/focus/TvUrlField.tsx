@@ -6,7 +6,7 @@ import TvTextInput from "@/components/focus/TvTextInput";
 import { colors, radius, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
 
-const useScreenKeyboard = Platform.OS === "android" || Platform.isTV;
+const useScreenKeyboard = Platform.isTV;
 
 type Props = {
   value: string;

@@ -11,7 +11,7 @@ import { t } from "@/i18n";
 import { useAuthStore } from "@/store/auth";
 import { useConfigStore } from "@/store/config";
 
-const useScreenKeyboard = Platform.OS === "android" || Platform.isTV;
+const useScreenKeyboard = Platform.isTV;
 
 type EditField = "username" | "password" | null;
 

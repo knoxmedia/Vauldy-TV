@@ -19,7 +19,7 @@ import { normalizeServerUrl, useConfigStore } from "@/store/config";
 import packageJson from "../../package.json";
 
 const appVersion = Constants.expoConfig?.version ?? packageJson.version ?? "unknown";
-const useScreenKeyboard = Platform.OS === "android" || Platform.isTV;
+const useScreenKeyboard = Platform.isTV;
 
 export default function SettingsScreen() {
   const router = useRouter();
