@@ -46,6 +46,7 @@
         }
       ],
       "./plugins/withCleartextTraffic.js",
+      "./plugins/withTvExitApp.js",
       "expo-router",
       "expo-secure-store",
       "expo-asset",

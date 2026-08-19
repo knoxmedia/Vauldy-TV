@@ -7,7 +7,7 @@ import { colors, radius, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
 import { formatDuration, normalizeListPosterUrl, withAccessToken } from "@/lib/mediaUrl";
 import { episodeIsCompleted, pickPrimaryEpisodeMediaId } from "@/lib/seriesPlayback";
-import { TV_NAV_ENABLED, useTvRemoteNav } from "@/hooks/useTvRemoteNav";
+import { useTvRemoteNav } from "@/hooks/useTvRemoteNav";
 
 type Props = {
   episodes: EpisodeRow[];
@@ -82,7 +82,7 @@ export default function EpisodeList({
       <Pressable
         focusable={false}
         disabled={!playable}
-        onPress={TV_NAV_ENABLED ? undefined : () => {
+        onPress={() => {
           if (!playable) return;
           onPressEpisode(item, index);
         }}

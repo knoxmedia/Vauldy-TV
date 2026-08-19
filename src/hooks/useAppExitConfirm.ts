@@ -4,6 +4,7 @@ import { Alert, BackHandler } from "react-native";
 import { consumeTvKeyEvent, registerTvKeyHandler, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
 import { t } from "@/i18n";
+import { exitApp } from "@/lib/exitApp";
 
 function showExitConfirm() {
   Alert.alert(t("app.exit_title"), t("app.exit_message"), [
@@ -11,7 +12,7 @@ function showExitConfirm() {
     {
       text: t("app.exit_confirm"),
       style: "destructive",
-      onPress: () => BackHandler.exitApp(),
+      onPress: () => exitApp(),
     },
   ]);
 }

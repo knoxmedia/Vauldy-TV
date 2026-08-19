@@ -14,7 +14,7 @@ import { colors, radius, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
 import { normalizeServerUrl, useConfigStore } from "@/store/config";
 
-const useScreenKeyboard = Platform.OS === "android" || Platform.isTV;
+const useScreenKeyboard = Platform.isTV;
 
 export default function SetupScreen() {
   const router = useRouter();
