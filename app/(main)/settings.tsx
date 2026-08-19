@@ -1,5 +1,5 @@
 import Constants from "expo-constants";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
@@ -8,18 +8,20 @@ import {
   connectionFailureKey,
   fetchBranding,
   logout,
+  updateUserProfile,
 } from "@/api/client";
 import FocusablePressable from "@/components/focus/FocusablePressable";
 import TvUrlField from "@/components/focus/TvUrlField";
 import { Screen } from "@/components/LoadingState";
 import { colors, radius, spacing } from "@/constants/theme";
-import { t } from "@/i18n";
+import { resolveLocale, t, type Locale } from "@/i18n";
 import { useAuthStore } from "@/store/auth";
 import { normalizeServerUrl, useConfigStore } from "@/store/config";
 import packageJson from "../../package.json";
 
 const appVersion = Constants.expoConfig?.version ?? packageJson.version ?? "unknown";
 const useScreenKeyboard = Platform.isTV;
+const LOCALES: Locale[] = ["zh-CN", "en"];
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -27,9 +29,15 @@ export default function SettingsScreen() {
   const setServerUrl = useConfigStore((s) => s.setServerUrl);
   const setAppName = useConfigStore((s) => s.setAppName);
   const clearSession = useAuthStore((s) => s.clearSession);
+  const setUiLocale = useAuthStore((s) => s.setUiLocale);
+  const uiLocale = useAuthStore((s) => s.uiLocale);
   const [url, setUrl] = useState(serverUrl || "");
   const [saving, setSaving] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [savingLocale, setSavingLocale] = useState(false);
+
+  // Subscribe so labels refresh after language change
+  void uiLocale;
 
   async function saveServer() {
     const normalized = normalizeServerUrl(url);
@@ -63,6 +71,23 @@ export default function SettingsScreen() {
     }
   }
 
+  async function cycleLanguage() {
+    const current = resolveLocale();
+    const next = LOCALES[(LOCALES.indexOf(current) + 1) % LOCALES.length]!;
+    setSavingLocale(true);
+    try {
+      await updateUserProfile({ ui_locale: next });
+      setUiLocale(next);
+      Alert.alert(t("settings.language_saved"));
+    } catch {
+      // Still apply locally so the TV remains usable offline / on older servers
+      setUiLocale(next);
+      Alert.alert(t("settings.language_saved"));
+    } finally {
+      setSavingLocale(false);
+    }
+  }
+
   async function handleLogout() {
     setLoggingOut(true);
     try {
@@ -75,6 +100,8 @@ export default function SettingsScreen() {
       router.replace("/login");
     }
   }
+
+  const localeLabel = t(`settings.lang.${resolveLocale()}`);
 
   return (
     <Screen>
@@ -92,6 +119,24 @@ export default function SettingsScreen() {
           />
           <FocusablePressable onPress={() => void saveServer()} style={styles.primaryBtn} focusedStyle={styles.btnFocused}>
             {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{t("common.save")}</Text>}
+          </FocusablePressable>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>{t("settings.language")}</Text>
+          <FocusablePressable onPress={() => void cycleLanguage()} style={styles.rowBtn} focusedStyle={styles.btnFocused}>
+            {savingLocale ? (
+              <ActivityIndicator color={colors.brand} />
+            ) : (
+              <>
+                <Text style={styles.rowLabel}>{t("settings.language")}</Text>
+                <Text style={styles.rowValue}>{localeLabel}</Text>
+              </>
+            )}
+          </FocusablePressable>
+          <FocusablePressable onPress={() => router.push("/about" as Href)} style={[styles.rowBtn, styles.rowBtnSpaced]} focusedStyle={styles.btnFocused}>
+            <Text style={styles.rowLabel}>{t("settings.about")}</Text>
+            <Text style={styles.rowValue}>›</Text>
           </FocusablePressable>
         </View>
 
@@ -131,6 +176,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   primaryText: { color: "#fff", fontSize: 18, fontWeight: "600" },
+  rowBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: colors.inputBg,
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 2,
+    borderColor: colors.borderLight,
+    minHeight: 52,
+  },
+  rowBtnSpaced: { marginTop: spacing.md },
+  rowLabel: { color: colors.text, fontSize: 18, fontWeight: "600" },
+  rowValue: { color: colors.brand, fontSize: 18, fontWeight: "600" },
   secondaryBtn: {
     backgroundColor: colors.accentBg,
     borderRadius: radius.md,
@@ -140,6 +200,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(237,109,0,0.25)",
   },
   secondaryText: { color: colors.accent, fontSize: 18, fontWeight: "600" },
-  btnFocused: {},
+  btnFocused: { borderColor: colors.brand },
   version: { color: colors.textMuted, fontSize: 14, marginTop: spacing.md, textAlign: "center" },
 });

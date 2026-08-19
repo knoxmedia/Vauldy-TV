@@ -17,6 +17,7 @@ import { colors, radius, spacing } from "@/constants/theme";
 import { TV_NAV_ENABLED, useTvRemoteNav } from "@/hooks/useTvRemoteNav";
 import { t } from "@/i18n";
 import { normalizeListPosterUrl, withAccessToken } from "@/lib/mediaUrl";
+import { ensureCanPlay } from "@/lib/playbackGate";
 import {
   fetchSeriesEpisodeMediaOrder,
   pickPrimaryEpisodeMediaId,
@@ -34,6 +35,7 @@ async function startSeriesPlayback(opts: {
   positionSec?: number;
   router: ReturnType<typeof useRouter>;
 }) {
+  if (!ensureCanPlay()) return;
   const { order, episodes } = await fetchSeriesEpisodeMediaOrder(opts.seasons);
   useSeriesPlayStore.getState().setSession(opts.seriesId, order, episodes);
   const index = opts.indexInOrder ?? Math.max(0, order.indexOf(opts.mediaId));
@@ -147,6 +149,7 @@ export default function SeriesDetailScreen() {
   }, [playTarget, router, seasons, seriesId]);
 
   const onPlayFromStart = useCallback(async () => {
+    if (!ensureCanPlay()) return;
     const { order, episodes } = await fetchSeriesEpisodeMediaOrder(seasons);
     if (order.length === 0) return;
     const mediaId = order[0]!;

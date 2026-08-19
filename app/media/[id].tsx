@@ -24,6 +24,7 @@ import {
   mediaPosterSrc,
   mediaReleaseYear,
 } from "@/lib/mediaUrl";
+import { ensureCanPlay } from "@/lib/playbackGate";
 import { useTvFocusStore } from "@/store/tvFocus";
 
 export default function MediaDetailScreen() {
@@ -84,6 +85,7 @@ export default function MediaDetailScreen() {
   const primaryAction = useCallback(() => {
     if (!item) return;
     if (item.file_type === "video" || item.file_type === "audio") {
+      if (!ensureCanPlay()) return;
       const tParam = savedPosition > 0 ? `?t=${Math.floor(savedPosition)}` : "";
       return router.push(`/player/${item.id}${tParam}`);
     }

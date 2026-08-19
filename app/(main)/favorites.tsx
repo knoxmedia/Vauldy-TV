@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { fetchFavorites } from "@/api/client";
 import type { MediaItem } from "@/api/types";
 import EmptyState from "@/components/EmptyState";
@@ -10,12 +11,14 @@ import { colors, spacing } from "@/constants/theme";
 import { SIDEBAR_WIDTH } from "@/constants/layout";
 import { useMainContentNav } from "@/hooks/useMainContentNav";
 import type { TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { peekContentFocus, saveContentFocus } from "@/store/contentFocus";
 import { useTvFocusStore } from "@/store/tvFocus";
 import { t } from "@/i18n";
 
 const GRID_COLUMNS = 4;
 const GRID_GAP = 16;
 const GRID_ROW_GAP = 16;
+const FOCUS_KEY = "favorites";
 
 export default function FavoritesScreen() {
   const router = useRouter();
@@ -29,7 +32,7 @@ export default function FavoritesScreen() {
   const exitContentUp = useTvFocusStore((s) => s.exitContentUp);
   const exitContentDown = useTvFocusStore((s) => s.exitContentDown);
 
-  const [focusIndex, setFocusIndex] = useState(0);
+  const [focusIndex, setFocusIndex] = useState(() => peekContentFocus(FOCUS_KEY)?.index ?? 0);
 
   const itemWidth = useMemo(() => {
     const horizontalPadding = spacing.lg * 2;
@@ -77,6 +80,18 @@ export default function FavoritesScreen() {
       .finally(() => setLoading(false));
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      setZone("content");
+      const saved = peekContentFocus(FOCUS_KEY);
+      if (saved) {
+        focusIndexRef.current = saved.index;
+        setFocusIndex(saved.index);
+        scrollToItem(saved.index);
+      }
+    }, [scrollToItem, setZone]),
+  );
+
   useMainContentNav(
     useCallback((evt: TvKeyEvent) => {
       const type = evt.eventType;
@@ -92,8 +107,12 @@ export default function FavoritesScreen() {
       const maxRow = Math.floor((count - 1) / columns);
 
       if (type === "select") {
-        const item = itemsRef.current[focusIndexConfirmed.current];
-        if (item) routerRef.current.push(`/media/${item.id}`);
+        const idx = focusIndexConfirmed.current;
+        const item = itemsRef.current[idx];
+        if (item) {
+          saveContentFocus(FOCUS_KEY, { index: idx });
+          routerRef.current.push(`/media/${item.id}`);
+        }
         return true;
       }
       if (type === "left") {
@@ -171,7 +190,10 @@ export default function FavoritesScreen() {
                     item={item}
                     layout="grid"
                     tvSelected={zone === "content" && focusIndex >= 0 && focusIndex === itemIndex}
-                    onPress={() => router.push(`/media/${item.id}`)}
+                    onPress={() => {
+                      saveContentFocus(FOCUS_KEY, { index: itemIndex });
+                      router.push(`/media/${item.id}`);
+                    }}
                   />
                 </View>
               );

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { UserRole } from "@/api/types";
+import { authSecureStorage } from "@/lib/authSecureStorage";
 
 type AuthState = {
   token: string | null;
@@ -11,6 +11,7 @@ type AuthState = {
   avatarUrl: string | null;
   uiLocale: string | null;
   setToken: (t: string | null) => void;
+  setUiLocale: (locale: string | null) => void;
   setProfile: (
     username: string,
     role: UserRole,
@@ -29,6 +30,7 @@ export const useAuthStore = create<AuthState>()(
       avatarUrl: null,
       uiLocale: null,
       setToken: (t) => set({ token: t }),
+      setUiLocale: (uiLocale) => set({ uiLocale }),
       setProfile: (username, role, caps) =>
         set({
           username,
@@ -49,11 +51,12 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "vauldy-tv-auth",
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => authSecureStorage),
       partialize: (s) => ({
         token: s.token,
         role: s.role,
         username: s.username,
+        canPlay: s.canPlay,
         avatarUrl: s.avatarUrl,
         uiLocale: s.uiLocale,
       }),

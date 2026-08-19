@@ -103,6 +103,21 @@ export type SessionUserInfo = {
   ui_locale?: string;
 };
 
+export type MediaSubtitleRow = {
+  id: number;
+  source_kind: string;
+  stream_index?: number;
+  codec_name?: string;
+  lang: string;
+  lang_source?: string;
+  label?: string;
+  source_path?: string;
+  vtt_path?: string;
+  status: string;
+  error_message?: string;
+  updated_at?: string;
+};
+
 export type BrandingInfo = {
   app_name: string;
   favicon_url?: string;

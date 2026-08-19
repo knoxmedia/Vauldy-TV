@@ -12,9 +12,13 @@ import { colors, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
 import { useMainContentNav } from "@/hooks/useMainContentNav";
 import type { TvKeyEvent } from "@/hooks/tvKeyDispatcher";
+import { ensureCanPlay } from "@/lib/playbackGate";
 import { useConfigStore } from "@/store/config";
+import { peekContentFocus, saveContentFocus } from "@/store/contentFocus";
 import { useMusicPlayerStore } from "@/store/musicPlayer";
 import { useTvFocusStore } from "@/store/tvFocus";
+
+const FOCUS_KEY = "home";
 
 function historyToMediaItem(h: HistoryItem): MediaItem {
   return {
@@ -118,18 +122,36 @@ export default function HomeScreen() {
     setRecent(recentItems.slice(0, 12));
   }, []);
 
+  const pendingRestore = useRef(peekContentFocus(FOCUS_KEY));
+
   useFocusEffect(
     useCallback(() => {
       setZone("content");
-      const libShelf = hasHistoryRef.current ? librariesShelfIndexRef.current : 0;
-      activeShelfRef.current = libShelf;
-      itemIndexRef.current = 0;
-      setActiveShelf(libShelf);
-      setItemIndex(0);
+      pendingRestore.current = peekContentFocus(FOCUS_KEY);
       setLoading(true);
       load().finally(() => setLoading(false));
     }, [load, setZone]),
   );
+
+  useEffect(() => {
+    if (loading) return;
+    const saved = pendingRestore.current;
+    pendingRestore.current = null;
+    if (saved) {
+      const maxShelf = (hasHistory ? 1 : 0) + (hasRecent ? 1 : 0);
+      const shelf = Math.max(0, Math.min(saved.shelf ?? 0, maxShelf));
+      activeShelfRef.current = shelf;
+      itemIndexRef.current = Math.max(0, saved.index);
+      setActiveShelf(shelf);
+      setItemIndex(Math.max(0, saved.index));
+      return;
+    }
+    const libShelf = hasHistory ? librariesShelfIndex : 0;
+    activeShelfRef.current = libShelf;
+    itemIndexRef.current = 0;
+    setActiveShelf(libShelf);
+    setItemIndex(0);
+  }, [loading, hasHistory, hasRecent, librariesShelfIndex]);
 
   useMainContentNav(
     useCallback((evt: TvKeyEvent) => {
@@ -158,9 +180,11 @@ export default function HomeScreen() {
         // Select uses confirmed refs — always matches what's visually highlighted.
         const selectShelf = activeShelfConfirmed.current;
         const selectIdx = itemIndexConfirmed.current;
+        saveContentFocus(FOCUS_KEY, { shelf: selectShelf, index: selectIdx });
         if (hasHist && selectShelf === 0) {
           const h = historyRef.current[selectIdx] as HistoryItem | undefined;
           if (h) {
+            if (!ensureCanPlay()) return true;
             const tParam = h.position > 0 ? `?t=${Math.floor(h.position)}` : "";
             routerRef.current.push(`/player/${h.media_id}${tParam}`);
           }
@@ -257,6 +281,8 @@ export default function HomeScreen() {
                 aspect="landscape"
                 progress={h.duration > 0 ? (h.position / h.duration) * 100 : 0}
                 onPress={() => {
+                  saveContentFocus(FOCUS_KEY, { shelf: 0, index: history.findIndex((x) => x.media_id === h.media_id) });
+                  if (!ensureCanPlay()) return;
                   const tParam = h.position > 0 ? `?t=${Math.floor(h.position)}` : "";
                   router.push(`/player/${h.media_id}${tParam}`);
                 }}
@@ -277,6 +303,10 @@ export default function HomeScreen() {
               library={lib}
               tvSelected={selected}
               onPress={() => {
+                saveContentFocus(FOCUS_KEY, {
+                  shelf: librariesShelfIndex,
+                  index: libraries.findIndex((x) => x.id === lib.id),
+                });
                 useMusicPlayerStore.getState().setLyricsExpanded(false);
                 setZone("content");
                 router.push(`/library/${lib.id}`);
@@ -292,7 +322,17 @@ export default function HomeScreen() {
             focusIndex={recentFocus}
             keyExtractor={(item) => String(item.id)}
             renderItem={(item, _i, { selected }) => (
-              <MediaCard tvSelected={selected} item={item} onPress={() => router.push(`/media/${item.id}`)} />
+              <MediaCard
+                tvSelected={selected}
+                item={item}
+                onPress={() => {
+                  saveContentFocus(FOCUS_KEY, {
+                    shelf: recentShelfIndex,
+                    index: recent.findIndex((x) => x.id === item.id),
+                  });
+                  router.push(`/media/${item.id}`);
+                }}
+              />
             )}
           />
         ) : null}

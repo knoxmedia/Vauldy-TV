@@ -7,13 +7,15 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import {
   fetchMedia,
   fetchMediaDetail,
+  fetchMediaSubtitles,
   fetchPlaybackPlan,
   fetchSeasonEpisodes,
+  mediaSubtitleVttPath,
   playbackEnd,
   playbackStart,
   saveProgress,
 } from "@/api/client";
-import type { MediaDetail } from "@/api/types";
+import type { MediaDetail, MediaSubtitleRow } from "@/api/types";
 import { useTvBackHandler } from "@/components/focus/TvBackButton";
 import { registerTvKeyHandler, consumeTvKeyEvent, type TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import FocusablePressable from "@/components/focus/FocusablePressable";
@@ -25,11 +27,27 @@ import { useTvControlsVisibility } from "@/hooks/useTvControlsVisibility";
 import { t } from "@/i18n";
 import { parseMusicTags } from "@/lib/musicTags";
 import { albumArtworkSrc, mediaPlaySrc, mediaPosterSrc, musicMediaPosterSrc, normalizeListPosterUrl, withAccessToken } from "@/lib/mediaUrl";
+import { ensureCanPlay } from "@/lib/playbackGate";
+import { activeCueText, parseVtt, type VttCue } from "@/lib/vtt";
 import { resolveNextSeriesMedia } from "@/lib/seriesPlayback";
 import { useMusicPlayerStore } from "@/store/musicPlayer";
 import { useSeriesPlayStore } from "@/store/seriesPlay";
 
 const PROGRESS_SAVE_INTERVAL_MS = 30_000;
+
+type SubtitleTrack = {
+  id: number;
+  label: string;
+  cues: VttCue[];
+};
+
+function subtitleTrackLabel(row: MediaSubtitleRow, index: number): string {
+  const label = (row.label || "").trim();
+  if (label) return label;
+  const lang = (row.lang || "").trim();
+  if (lang) return lang;
+  return `${t("player.subtitles")} ${index + 1}`;
+}
 
 async function enrichMusicDetail(detail: MediaDetail): Promise<MediaDetail> {
   if (detail.music_album_id || !detail.library_id) return detail;
@@ -89,6 +107,9 @@ export default function PlayerScreen() {
     posterUrl: string;
     episodeNum: number;
   } | null>(null);
+  const [subtitleTracks, setSubtitleTracks] = useState<SubtitleTrack[]>([]);
+  const [subtitleIndex, setSubtitleIndex] = useState(-1);
+  const [subtitleToast, setSubtitleToast] = useState<string | null>(null);
   const nextEpisodeRef = useRef(nextEpisode);
   const nextFocusRef = useRef(nextFocus);
   nextEpisodeRef.current = nextEpisode;
@@ -144,6 +165,9 @@ export default function PlayerScreen() {
     setNextCountdown(0);
     setNextFocus(0);
     setNextEpisodeMeta(null);
+    setSubtitleTracks([]);
+    setSubtitleIndex(-1);
+    setSubtitleToast(null);
     lastPosition.current = 0;
     lastSavedPosition.current = 0;
 
@@ -198,6 +222,13 @@ export default function PlayerScreen() {
       activeMediaIdRef.current === mediaId;
     (async () => {
       try {
+        if (!ensureCanPlay()) {
+          if (isCurrent()) {
+            setError(t("error.playback_denied"));
+            setLoading(false);
+          }
+          return;
+        }
         const mediaDetail = await fetchMediaDetail(mediaId);
         const enriched = mediaDetail.file_type === "audio" ? await enrichMusicDetail(mediaDetail) : mediaDetail;
         if (!isCurrent()) return;
@@ -245,6 +276,36 @@ export default function PlayerScreen() {
             : mediaPlaySrc(mediaId);
         uriRef.current = playUri;
         setUri(playUri);
+
+        try {
+          const rows = await fetchMediaSubtitles(mediaId);
+          const ready = rows.filter((row) => (row.status || "").toLowerCase() === "ready" || !!row.vtt_path);
+          const loaded: SubtitleTrack[] = [];
+          for (let i = 0; i < ready.length; i++) {
+            const row = ready[i]!;
+            const path = row.vtt_path || mediaSubtitleVttPath(mediaId, row.id);
+            const vttUrl = withAccessToken(path);
+            try {
+              const res = await fetch(vttUrl);
+              if (!res.ok) continue;
+              const text = await res.text();
+              const cues = parseVtt(text);
+              if (cues.length === 0) continue;
+              loaded.push({ id: row.id, label: subtitleTrackLabel(row, i), cues });
+            } catch {
+              /* skip broken track */
+            }
+          }
+          if (isCurrent()) {
+            setSubtitleTracks(loaded);
+            setSubtitleIndex(loaded.length > 0 ? 0 : -1);
+          }
+        } catch {
+          if (isCurrent()) {
+            setSubtitleTracks([]);
+            setSubtitleIndex(-1);
+          }
+        }
       } catch {
         if (isCurrent()) setError(t("player.error"));
       } finally {
@@ -533,6 +594,38 @@ export default function PlayerScreen() {
     controls.bump(setControlsVisibleSafe);
   }, [controls, setControlsVisibleSafe]);
 
+  const cycleSubtitle = useCallback(() => {
+    if (subtitleTracks.length === 0) {
+      setSubtitleToast(t("player.subtitles_none"));
+      bumpControls();
+      return;
+    }
+    setSubtitleIndex((prev) => {
+      const next = prev + 1;
+      if (next >= subtitleTracks.length) {
+        setSubtitleToast(t("player.subtitles_off"));
+        return -1;
+      }
+      const track = subtitleTracks[next]!;
+      setSubtitleToast(t("player.subtitle_track", { label: track.label }));
+      return next;
+    });
+    bumpControls();
+  }, [bumpControls, subtitleTracks]);
+
+  useEffect(() => {
+    if (!subtitleToast) return;
+    const timer = setTimeout(() => setSubtitleToast(null), 2200);
+    return () => clearTimeout(timer);
+  }, [subtitleToast]);
+
+  const activeSubtitleCues = subtitleIndex >= 0 ? subtitleTracks[subtitleIndex]?.cues : undefined;
+  const subtitleCueText = activeSubtitleCues ? activeCueText(activeSubtitleCues, position) : "";
+  const subtitleControlLabel =
+    subtitleIndex < 0
+      ? t("player.subtitles_off")
+      : subtitleTracks[subtitleIndex]?.label || t("player.subtitles");
+
   const handleHardwareBack = useCallback(() => {
     if (nextEpisodeRef.current) {
       cancelNext();
@@ -689,9 +782,12 @@ export default function PlayerScreen() {
         playing={playing}
         position={position}
         duration={duration}
+        subtitleLabel={subtitleControlLabel}
+        subtitleText={subtitleToast || subtitleCueText}
         onTogglePlay={() => void toggleVideoPlay()}
         onSeekBy={(delta) => void seekBy(delta)}
         onStop={() => void stopVideo()}
+        onCycleSubtitle={cycleSubtitle}
         onBack={() => {
           persistProgress(false);
           router.back();

@@ -13,6 +13,7 @@ const NAV: { href: Href; segment: string | null }[] = [
   { href: "/(main)/browse", segment: "browse" },
   { href: "/(main)/search" as Href, segment: "search" },
   { href: "/(main)/favorites", segment: "favorites" },
+  { href: "/(main)/history" as Href, segment: "history" },
   { href: "/(main)/settings", segment: "settings" },
 ];
 

@@ -12,6 +12,7 @@ const NAV: { href: Href; labelKey: string; segment: string | null }[] = [
   { href: "/(main)/browse", labelKey: "tab.browse", segment: "browse" },
   { href: "/(main)/search" as Href, labelKey: "tab.search", segment: "search" },
   { href: "/(main)/favorites", labelKey: "tab.favorites", segment: "favorites" },
+  { href: "/(main)/history" as Href, labelKey: "tab.history", segment: "history" },
   { href: "/(main)/settings", labelKey: "tab.settings", segment: "settings" },
 ];
 

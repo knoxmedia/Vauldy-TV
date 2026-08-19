@@ -50,7 +50,7 @@ export default function LoginScreen() {
     try {
       const info = await fetchUserInfo();
       setProfile(info.username, info.role, {
-        canPlay: info.can_play,
+        canPlay: info.can_play !== false,
         avatarUrl: info.avatar_url,
         uiLocale: info.ui_locale,
       });

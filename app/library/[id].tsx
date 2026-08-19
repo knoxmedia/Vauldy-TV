@@ -13,6 +13,7 @@ import SeriesCard from "@/components/series/SeriesCard";
 import { colors, spacing } from "@/constants/theme";
 import { useTvRemoteNav } from "@/hooks/useTvRemoteNav";
 import { isMusicLibraryType, isPhotoLibraryType, isTVLibraryType, libraryFileType } from "@/lib/library";
+import { peekContentFocus, saveContentFocus } from "@/store/contentFocus";
 import { useTvFocusStore } from "@/store/tvFocus";
 import { t } from "@/i18n";
 
@@ -44,12 +45,6 @@ export default function LibraryScreen() {
   const zone = useTvFocusStore((s) => s.zone);
   const setZone = useTvFocusStore((s) => s.setZone);
 
-  useFocusEffect(
-    useCallback(() => {
-      setZone("content");
-    }, [setZone]),
-  );
-
   const gridLayout = useMemo(() => {
     const horizontalPadding = spacing.lg * 2;
     const availableWidth = Math.max(0, screenWidth - horizontalPadding);
@@ -70,23 +65,31 @@ export default function LibraryScreen() {
   }, []);
 
   const openItem = useCallback((item: MediaItem) => {
+    const idx = itemsRef.current.findIndex((x) => x.id === item.id);
+    if (idx >= 0) saveContentFocus(`library:${libraryId}`, { index: idx });
     if (item.file_type === "image") {
       router.push(`/photo/${item.id}`);
       return;
     }
     router.push(`/media/${item.id}`);
-  }, [router]);
+  }, [libraryId, router]);
 
   const openSeries = useCallback((series: SeriesSummary) => {
+    const idx = seriesItemsRef.current.findIndex((x) => x.id === series.id);
+    if (idx >= 0) saveContentFocus(`library:${libraryId}`, { index: idx });
     router.push(`/series/${series.id}`);
-  }, [router]);
+  }, [libraryId, router]);
 
-  const { index: focusIndex } = useTvRemoteNav({
+  const restoredIndex = peekContentFocus(`library:${libraryId}`)?.index ?? 0;
+
+  const { index: focusIndex, setIndex: setFocusIndex } = useTvRemoteNav({
     mode: "grid",
     columns: GRID_COLUMNS,
     count: isMusicLibrary ? 0 : isTVLibrary ? seriesItems.length : items.length,
     enabled: !isMusicLibrary && zone === "content",
+    initialIndex: restoredIndex,
     onSelect: (i) => {
+      saveContentFocus(`library:${libraryId}`, { index: i });
       if (isTVLibrary) {
         const series = seriesItemsRef.current[i];
         if (series) openSeries(series);
@@ -99,6 +102,17 @@ export default function LibraryScreen() {
     onExitUp: () => useTvFocusStore.getState().exitContentUp(),
     onExitDown: () => useTvFocusStore.getState().exitContentDown(),
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      setZone("content");
+      const saved = peekContentFocus(`library:${libraryId}`);
+      if (saved) {
+        setFocusIndex(saved.index);
+        scrollToItem(saved.index);
+      }
+    }, [libraryId, scrollToItem, setFocusIndex, setZone]),
+  );
 
   const gridRows = useMemo(() => {
     const source = isTVLibrary ? seriesItems : items;

@@ -23,7 +23,11 @@ import type { TvKeyEvent } from "@/hooks/tvKeyDispatcher";
 import { TV_NAV_ENABLED } from "@/hooks/useTvRemoteNav";
 import { t } from "@/i18n";
 import { loadSearchHistory, recordSearchHistory } from "@/lib/searchHistory";
+import { ensureCanPlay } from "@/lib/playbackGate";
+import { peekContentFocus, saveContentFocus } from "@/store/contentFocus";
 import { useTvFocusStore } from "@/store/tvFocus";
+
+const FOCUS_KEY = "search";
 
 type ResultKind = "movies" | "series" | "music" | "photos" | "documents";
 type ResultShelf = { kind: ResultKind; title: string; items: MediaItem[] };
@@ -134,11 +138,24 @@ export default function SearchScreen() {
   }, [setZone]);
 
   const openItem = useCallback((item: MediaItem) => {
+    if ((item.file_type === "audio" || item.file_type === "video") && mediaRoute(item).startsWith("/player")) {
+      if (!ensureCanPlay()) return;
+    }
+    saveContentFocus(FOCUS_KEY, {
+      shelf: focusRowRef.current,
+      index: focusColumnsRef.current[focusRowRef.current] ?? 0,
+    });
     routerRef.current.push(mediaRoute(item));
   }, []);
 
   useFocusEffect(useCallback(() => {
     setZone("content");
+    const saved = peekContentFocus(FOCUS_KEY);
+    if (saved) {
+      moveToRow(saved.shelf ?? 0);
+      setFocusColumns((prev) => ({ ...prev, [saved.shelf ?? 0]: saved.index }));
+      return;
+    }
     moveToRow(0);
   }, [moveToRow, setZone]));
 
