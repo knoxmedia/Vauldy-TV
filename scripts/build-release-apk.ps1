@@ -5,6 +5,7 @@ param(
 )
 
 $env:EXPO_TV = "1"
+$env:NODE_ENV = "production"
 $env:ANDROID_HOME = "K:\Android\Sdk"
 $env:ANDROID_SDK_ROOT = "K:\Android\Sdk"
 $env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-17.0.19.10-hotspot"
@@ -21,11 +22,25 @@ $env:Path = @(
 
 $root = Split-Path $PSScriptRoot -Parent
 $androidDir = Join-Path $root "android"
+$expoCli = Join-Path $root "node_modules\.bin\expo.cmd"
 $version = (Get-Content (Join-Path $root "package.json") -Raw | ConvertFrom-Json).version
 $distDir = Join-Path $root "dist"
 $apkName = "vauldy-tv-$version-$Arch-release.apk"
 $srcApk = Join-Path $androidDir "app\build\outputs\apk\release\app-release.apk"
 $destApk = Join-Path $distDir $apkName
+
+if (-not (Test-Path $expoCli)) {
+  Write-Error "Local Expo CLI not found: $expoCli. Run npm install first."
+  exit 1
+}
+
+Push-Location $root
+try {
+  & $expoCli prebuild --platform android --clean
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+} finally {
+  Pop-Location
+}
 
 Push-Location $androidDir
 try {

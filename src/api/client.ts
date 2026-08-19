@@ -26,11 +26,15 @@ export function setUnauthorizedHandler(fn: () => void) {
   onUnauthorized = fn;
 }
 
+const DEFAULT_TIMEOUT_MS = 120000;
+const HEALTH_TIMEOUT_MS = 10000;
+
 function createApi(): AxiosInstance {
-  const instance = axios.create({ timeout: 120000 });
+  const instance = axios.create({ timeout: DEFAULT_TIMEOUT_MS });
   instance.interceptors.request.use((config) => {
     const base = useConfigStore.getState().serverUrl;
-    if (base) config.baseURL = base;
+    // Do not overwrite an explicit baseURL (e.g. health check before saving config)
+    if (base && !config.baseURL) config.baseURL = base;
     const token = useAuthStore.getState().token;
     if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
@@ -52,9 +56,74 @@ function createApi(): AxiosInstance {
 
 const api = createApi();
 
-export async function checkHealth(): Promise<boolean> {
-  const { data } = await api.get<{ status: string }>("/health");
-  return data?.status === "ok";
+export async function checkHealth(serverUrl?: string): Promise<boolean> {
+  const base = (serverUrl ?? useConfigStore.getState().serverUrl ?? "").replace(/\/+$/, "");
+  if (!base) return false;
+  // Use absolute URL + fetch so setup does not depend on axios baseURL / store timing.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${base}/health`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const err = new Error(`HTTP ${res.status}`) as Error & { response?: { status: number } };
+      err.response = { status: res.status };
+      throw err;
+    }
+    const data = (await res.json()) as { status?: string };
+    return data?.status === "ok";
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      const timeoutErr = new Error("timeout") as Error & { code?: string };
+      timeoutErr.code = "ECONNABORTED";
+      throw timeoutErr;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Map axios / network failures to i18n keys for the setup / settings connect UI. */
+export function connectionFailureKey(error: unknown): string {
+  if (error instanceof Error && error.message === "health") return "setup.failure_http";
+  const err = error as {
+    code?: string;
+    message?: string;
+    name?: string;
+    response?: { status?: number };
+  };
+  if (err?.response?.status) return "setup.failure_http";
+  const code = String(err?.code || "").toUpperCase();
+  const msg = String(err?.message || "").toLowerCase();
+  if (
+    code === "ECONNABORTED" ||
+    err?.name === "AbortError" ||
+    msg.includes("timeout") ||
+    msg === "aborted"
+  ) {
+    return "setup.failure_timeout";
+  }
+  if (msg.includes("certificate") || msg.includes("ssl") || msg.includes("cert") || msg.includes("cleartext")) {
+    return "setup.failure_cert";
+  }
+  if (code === "ENOTFOUND" || msg.includes("getaddrinfo") || msg.includes("nodename")) {
+    return "setup.failure_dns";
+  }
+  return "setup.failure_unreachable";
+}
+
+export function connectionFailureDetail(error: unknown): string {
+  const err = error as { message?: string; code?: string; response?: { status?: number } };
+  const parts = [
+    err?.code ? String(err.code) : "",
+    err?.response?.status ? `HTTP ${err.response.status}` : "",
+    err?.message ? String(err.message) : "",
+  ].filter(Boolean);
+  return parts.join(" · ");
 }
 
 export async function fetchBranding(): Promise<BrandingInfo> {
@@ -181,8 +250,16 @@ export async function removeFavorite(mediaId: number): Promise<void> {
   await api.delete(`/api/v1/media/${mediaId}/favorite`);
 }
 
-export async function fetchPlaybackPlan(mediaId: number): Promise<PlaybackPlan> {
-  const { data } = await api.get<PlaybackPlan>(`/api/v1/media/${mediaId}/hls`);
+const FORCE_TRANSCODE_VIDEO_CODEC_SENTINEL = "__vauldy_force_transcode__";
+
+export async function fetchPlaybackPlan(
+  mediaId: number,
+  opts?: { forceTranscode?: boolean },
+): Promise<PlaybackPlan> {
+  const params = opts?.forceTranscode
+    ? { video_codecs: FORCE_TRANSCODE_VIDEO_CODEC_SENTINEL }
+    : undefined;
+  const { data } = await api.get<PlaybackPlan>(`/api/v1/media/${mediaId}/hls`, { params });
   return data;
 }
 

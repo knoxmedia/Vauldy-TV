@@ -1,6 +1,6 @@
 {
   "name": "vauldy-tv",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -46,6 +46,7 @@
     "@react-native-tvos/config-tv": "^0.1.1",
     "@types/react": "~18.3.12",
     "cross-env": "^7.0.3",
+    "expo-build-properties": "^57.0.12",
     "typescript": "~5.3.3",
     "vitest": "^4.1.10"
   }

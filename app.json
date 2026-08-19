@@ -2,7 +2,7 @@
   "expo": {
     "name": "Vauldy TV",
     "slug": "vauldy-tv",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "orientation": "landscape",
     "icon": "./assets/icon.png",
     "scheme": "vauldy-tv",
@@ -35,6 +35,15 @@
           }
         }
       ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "./plugins/withCleartextTraffic.js",
       "expo-router",
       "expo-secure-store",
       "expo-asset",

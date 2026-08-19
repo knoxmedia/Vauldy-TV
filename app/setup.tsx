@@ -2,7 +2,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
-import { checkHealth, fetchBranding } from "@/api/client";
+import {
+  checkHealth,
+  connectionFailureDetail,
+  connectionFailureKey,
+  fetchBranding,
+} from "@/api/client";
 import FocusablePressable from "@/components/focus/FocusablePressable";
 import TvUrlField from "@/components/focus/TvUrlField";
 import { colors, radius, spacing } from "@/constants/theme";
@@ -23,12 +28,16 @@ export default function SetupScreen() {
 
   async function connect() {
     const normalized = normalizeServerUrl(url);
-    if (!normalized) return;
+    if (!normalized) {
+      Alert.alert(t("setup.invalid_url"));
+      return;
+    }
+    setUrl(normalized);
     setLoading(true);
     try {
-      setServerUrl(normalized);
-      const ok = await checkHealth();
+      const ok = await checkHealth(normalized);
       if (!ok) throw new Error("health");
+      setServerUrl(normalized);
       try {
         const branding = await fetchBranding();
         if (branding.app_name) setAppName(branding.app_name);
@@ -36,9 +45,13 @@ export default function SetupScreen() {
         /* optional */
       }
       router.replace("/login");
-    } catch {
+    } catch (error) {
       setServerUrl(null);
-      Alert.alert(t("setup.failure"));
+      const detail = connectionFailureDetail(error);
+      Alert.alert(
+        t("setup.failure"),
+        `${t(connectionFailureKey(error))}\n\n${normalized}${detail ? `\n${detail}` : ""}`,
+      );
     } finally {
       setLoading(false);
     }
