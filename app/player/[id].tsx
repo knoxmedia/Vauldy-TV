@@ -42,11 +42,40 @@ type SubtitleTrack = {
   cues: VttCue[];
 };
 
+const SUBTITLE_LANG_LABELS: Record<string, string> = {
+  zh: "中文",
+  en: "English",
+  ja: "日本語",
+  ko: "한국어",
+  fr: "Français",
+  de: "Deutsch",
+  es: "Español",
+  ru: "Русский",
+  pt: "Português",
+  it: "Italiano",
+};
+
+function subtitleKindLabel(kind: string): string {
+  switch (kind) {
+    case "embedded":
+    case "embedded_ocr":
+      return t("player.sub_kind_embedded");
+    case "external":
+    case "external_ocr":
+      return t("player.sub_kind_external");
+    case "asr":
+      return t("player.sub_kind_asr");
+    default:
+      return kind.trim();
+  }
+}
+
 function subtitleTrackLabel(row: MediaSubtitleRow, index: number): string {
-  const label = (row.label || "").trim();
-  if (label) return label;
-  const lang = (row.lang || "").trim();
-  if (lang) return lang;
+  const langCode = (row.lang || "").trim();
+  const lang = SUBTITLE_LANG_LABELS[langCode] || (langCode && langCode !== "und" ? langCode : "");
+  const kind = subtitleKindLabel(row.source_kind || "");
+  const parts = [lang, kind].filter(Boolean);
+  if (parts.length > 0) return parts.join(" · ");
   return `${t("player.subtitles")} ${index + 1}`;
 }
 
@@ -280,12 +309,13 @@ export default function PlayerScreen() {
 
         try {
           const rows = await fetchMediaSubtitles(mediaId);
-          const ready = rows.filter((row) => (row.status || "").toLowerCase() === "ready" || !!row.vtt_path);
+          // vtt_path is a server-side filesystem path, not a client-fetchable URL;
+          // subtitles are only served through the VTT endpoint (status must be ready).
+          const ready = rows.filter((row) => (row.status || "").toLowerCase() === "ready");
           const loaded: SubtitleTrack[] = [];
           for (let i = 0; i < ready.length; i++) {
             const row = ready[i]!;
-            const path = row.vtt_path || mediaSubtitleVttPath(mediaId, row.id);
-            const vttUrl = withAccessToken(path);
+            const vttUrl = withAccessToken(mediaSubtitleVttPath(mediaId, row.id));
             try {
               const res = await fetch(vttUrl);
               if (!res.ok) continue;
@@ -788,7 +818,7 @@ export default function PlayerScreen() {
         onTogglePlay={() => void toggleVideoPlay()}
         onSeekBy={(delta) => void seekBy(delta)}
         onStop={() => void stopVideo()}
-        onCycleSubtitle={cycleSubtitle}
+        onCycleSubtitle={subtitleTracks.length > 0 ? cycleSubtitle : undefined}
         onBack={() => {
           persistProgress(false);
           router.back();
