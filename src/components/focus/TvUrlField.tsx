@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
+import FocusablePressable from "@/components/focus/FocusablePressable";
 import TvOnScreenKeyboard from "@/components/focus/TvOnScreenKeyboard";
 import TvTextInput from "@/components/focus/TvTextInput";
 import { colors, radius, spacing } from "@/constants/theme";
@@ -51,17 +52,21 @@ export default function TvUrlField({
     );
   }
 
+  const openKeyboard = () => setKeyboardOpen(true);
+
   return (
     <View style={styles.wrap}>
-      <Pressable
-        focusable={false}
-        style={[styles.display, keyboardOpen && !Platform.isTV && styles.displayActive, tvSelected && styles.displayFocused]}
+      <FocusablePressable
+        preferredFocus={preferredFocus && !keyboardOpen}
+        onPress={openKeyboard}
+        style={[styles.display, keyboardOpen && styles.displayActive, tvSelected && styles.displayFocused]}
+        focusedStyle={styles.displayFocused}
       >
         <Text style={[styles.displayText, !value && styles.placeholder]} numberOfLines={2}>
           {value || placeholder || ""}
         </Text>
         {!keyboardOpen ? <Text style={styles.tapHint}>{t("keyboard.tap_to_edit")}</Text> : null}
-      </Pressable>
+      </FocusablePressable>
       {keyboardOpen ? (
         <TvOnScreenKeyboard
           variant="url"
