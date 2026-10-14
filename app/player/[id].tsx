@@ -1,7 +1,7 @@
 import { ResizeMode, Video, type AVPlaybackStatus } from "expo-av";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import {
@@ -35,6 +35,9 @@ import { useMusicPlayerStore } from "@/store/musicPlayer";
 import { useSeriesPlayStore } from "@/store/seriesPlay";
 
 const PROGRESS_SAVE_INTERVAL_MS = 30_000;
+// How long a resume/fallback seek target stays pinned before we assume the
+// seek failed and fall back to the player's real reported position.
+const RESTORE_PIN_TIMEOUT_MS = 10_000;
 
 type SubtitleTrack = {
   id: number;
@@ -112,6 +115,10 @@ export default function PlayerScreen() {
   const pendingFallbackSeek = useRef<number | null>(null);
   const fallbackAttemptedRef = useRef(false);
   const fallbackInFlightRef = useRef(false);
+  // While a resume/fallback seek is settling, freshly loaded sources report
+  // position ~0; pin lastPosition to the seek target so an exit during this
+  // window can't persist a 0 (and lose the whole session's progress).
+  const restoreTargetRef = useRef<{ target: number; at: number } | null>(null);
   const generationRef = useRef(0);
   const activeMediaIdRef = useRef(mediaId);
   const mountedRef = useRef(true);
@@ -190,6 +197,7 @@ export default function PlayerScreen() {
     pendingFallbackSeek.current = null;
     fallbackAttemptedRef.current = false;
     fallbackInFlightRef.current = false;
+    restoreTargetRef.current = null;
     nearEndTriggeredRef.current = false;
     setNextEpisode(null);
     setNextCountdown(0);
@@ -359,17 +367,39 @@ export default function PlayerScreen() {
     };
   }, [mediaId, persistProgress]);
 
+  // Periodic progress reporting (spec: POST /media/:id/progress 定时上报).
+  // Video used to save only on clean exits, so any abnormal interruption
+  // (process kill, crash, power loss, player error) lost the whole session's
+  // progress and the next entry started from 0.
   useEffect(() => {
-    if (!isAudio) return;
     const timer = setInterval(() => {
-      const pos = Math.floor(useMusicPlayerStore.getState().position);
-      if (pos > 0 && pos !== lastSavedPosition.current) {
-        lastSavedPosition.current = pos;
-        saveProgress(mediaId, pos, false).catch(() => {});
+      if (isAudioRef.current) {
+        const pos = Math.floor(useMusicPlayerStore.getState().position);
+        if (pos > 0 && pos !== lastSavedPosition.current) {
+          lastSavedPosition.current = pos;
+          saveProgress(mediaId, pos, false).catch(() => {});
+        }
+        return;
       }
+      persistProgress(false);
     }, PROGRESS_SAVE_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [isAudio, mediaId]);
+  }, [persistProgress]);
+
+  // Save progress the moment the app leaves the foreground — after that the OS
+  // may kill the process at any time and clean-exit saves would never run.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "background" && state !== "inactive") return;
+      if (isAudioRef.current) {
+        const pos = Math.floor(useMusicPlayerStore.getState().position);
+        if (pos > 0) saveProgress(mediaId, pos, false).catch(() => {});
+        return;
+      }
+      persistProgress(false);
+    });
+    return () => subscription.remove();
+  }, [mediaId, persistProgress]);
 
   const cancelNext = useCallback(() => {
     nearEndTriggeredRef.current = false;
@@ -412,12 +442,15 @@ export default function PlayerScreen() {
       if (durSec <= 0) return;
       didResumeSeek.current = true;
       const target = Math.min(resumeSec, Math.max(0, durSec - 1));
+      // Pin before awaiting: freshly loaded sources emit pos=0 status updates
+      // that would otherwise clobber lastPosition while the seek settles.
+      restoreTargetRef.current = { target, at: Date.now() };
       try {
         await videoRef.current?.setPositionAsync(target * 1000);
         lastPosition.current = target;
         setPosition(target);
       } catch {
-        /* ignore */
+        restoreTargetRef.current = null;
       }
     },
     [resumeT],
@@ -431,12 +464,13 @@ export default function PlayerScreen() {
     pendingFallbackSeek.current = null;
     didResumeSeek.current = true;
     const target = Math.min(fallbackPosition, Math.max(0, durSec - 1));
+    restoreTargetRef.current = { target, at: Date.now() };
     try {
       await videoRef.current?.setPositionAsync(target * 1000);
       lastPosition.current = target;
       setPosition(target);
     } catch {
-      /* ignore */
+      restoreTargetRef.current = null;
     }
   }, []);
 
@@ -454,6 +488,9 @@ export default function PlayerScreen() {
     const generation = generationRef.current;
     const failedUri = uriRef.current;
     const fallbackPosition = lastPosition.current;
+    // Pin the position now: the replacement source reloads from 0 and its
+    // status updates must not erase the progress we're about to restore.
+    if (fallbackPosition > 0) restoreTargetRef.current = { target: fallbackPosition, at: Date.now() };
     setError(null);
     setLoading(true);
 
@@ -500,8 +537,23 @@ export default function PlayerScreen() {
     if (pendingFallbackSeek.current != null) void tryFallbackSeek(status);
     else void tryResumeSeek(status);
     const pos = status.positionMillis / 1000;
-    lastPosition.current = pos;
-    setPosition(pos);
+    // While a resume/fallback seek is still settling, the freshly (re)loaded
+    // source reports pos≈0 — treat the pinned target as the real position so
+    // neither the UI nor the saved progress regresses to the start.
+    const restore = restoreTargetRef.current;
+    let effectivePos = pos;
+    if (restore != null) {
+      const durSec = (status.durationMillis ?? 0) / 1000;
+      if (durSec > 0 && pos >= restore.target - 2) {
+        restoreTargetRef.current = null; // seek landed
+      } else if (Date.now() - restore.at > RESTORE_PIN_TIMEOUT_MS) {
+        restoreTargetRef.current = null; // seek failed/stalled — give up pinning
+      } else {
+        effectivePos = restore.target;
+      }
+    }
+    lastPosition.current = effectivePos;
+    setPosition(effectivePos);
     setDuration((status.durationMillis ?? 0) / 1000);
     setPlaying(status.isPlaying);
     // Keep screen awake during video playback (not audio).
@@ -578,6 +630,8 @@ export default function PlayerScreen() {
 
   const seekBy = useCallback(
     async (deltaSec: number) => {
+      // Manual seek overrides any in-flight resume/fallback restore.
+      restoreTargetRef.current = null;
       const next = Math.max(0, Math.min(duration || Number.MAX_SAFE_INTEGER, position + deltaSec));
       lastPosition.current = next;
       setPosition(next);
@@ -605,13 +659,15 @@ export default function PlayerScreen() {
   }, [controls, playing, setControlsVisibleSafe]);
 
   const stopVideo = useCallback(async () => {
+    // Save progress BEFORE resetting playback — resetting first makes the
+    // status update report pos=0 and persistProgress() would skip the save.
+    persistProgress(false);
     try {
       await videoRef.current?.pauseAsync();
       await videoRef.current?.setPositionAsync(0);
     } catch {
       /* ignore */
     }
-    persistProgress(false);
     router.back();
   }, [persistProgress, router]);
 
