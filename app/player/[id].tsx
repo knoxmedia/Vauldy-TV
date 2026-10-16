@@ -606,6 +606,9 @@ export default function PlayerScreen() {
     }
     if (status.didJustFinish) {
       persistProgress(true);
+      // Local instant badge: the series screen re-merges this set when it
+      // regains focus, so the episode shows "watched" without a refetch race.
+      useSeriesPlayStore.getState().markCompleted(mediaId);
       const sid = series_id ? Number(series_id) : NaN;
       const session = useSeriesPlayStore.getState().session;
       if (session && Number.isFinite(sid) && sid === session.seriesId) {

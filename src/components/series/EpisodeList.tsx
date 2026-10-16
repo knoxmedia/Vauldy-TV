@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View, type ListRenderItemInfo } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
-import type { EpisodeRow } from "@/api/types";
+import type { EpisodeMediaVersion, EpisodeRow } from "@/api/types";
 import { colors, radius, spacing } from "@/constants/theme";
 import { t } from "@/i18n";
 import { formatDuration, normalizeListPosterUrl, withAccessToken } from "@/lib/mediaUrl";
@@ -13,6 +13,8 @@ type Props = {
   episodes: EpisodeRow[];
   completedMediaIds?: Set<number>;
   enabled?: boolean;
+  /** Bump on season switch to reset focus; keep stable when silently refreshing. */
+  resetIndexKey?: string | number;
   onExitUp?: () => void;
   onExitLeft?: () => void;
   onPressEpisode: (ep: EpisodeRow, index: number) => void;
@@ -27,10 +29,17 @@ function episodePosterUrl(ep: EpisodeRow): string {
   return withAccessToken(normalizeListPosterUrl(raw));
 }
 
+function primaryEpisodeVersion(ep: EpisodeRow, mediaId: number | null): EpisodeMediaVersion | null {
+  const versions = ep.versions ?? [];
+  if (versions.length === 0) return null;
+  return versions.find((v) => v.media_id === mediaId) ?? versions[0] ?? null;
+}
+
 export default function EpisodeList({
   episodes,
   completedMediaIds,
   enabled = true,
+  resetIndexKey,
   onExitUp,
   onExitLeft,
   onPressEpisode,
@@ -62,18 +71,26 @@ export default function EpisodeList({
     onExitLeft,
   });
 
+  // Reset only when the season changes. Silent refreshes (same key) keep the
+  // remote focus where the user left it; useTvRemoteNav clamps on count change.
   useEffect(() => {
     setIndex(0);
-  }, [sorted, setIndex]);
+  }, [resetIndexKey, setIndex]);
 
   const renderRow = ({ item, index }: ListRenderItemInfo<EpisodeRow>) => {
     const selected = focusIndex >= 0 && focusIndex === index;
     const primaryMediaId = pickPrimaryEpisodeMediaId(item);
     const playable = primaryMediaId != null;
-    const completed = completedMediaIds
-      ? completedMediaIds.has(primaryMediaId!)
-      : episodeIsCompleted(item);
-    const duration = item.duration ? formatDuration(item.duration) : "—";
+    const primaryVersion = primaryEpisodeVersion(item, primaryMediaId);
+    // History API excludes completed rows, so don't let an (always-present)
+    // completedMediaIds prop mask the version-level flag — merge both sources.
+    const completed =
+      (primaryMediaId != null && completedMediaIds?.has(primaryMediaId) === true) ||
+      episodeIsCompleted(item);
+    // episode.duration is never backfilled server-side (stays 0) — fall back
+    // to the linked media duration carried in versions[].
+    const durationSec = item.duration && item.duration > 0 ? item.duration : primaryVersion?.duration ?? 0;
+    const duration = durationSec > 0 ? formatDuration(durationSec) : "—";
     const title = item.title?.trim() || t("series.episode_n", { n: item.episode_num });
     const posterUri = episodePosterUrl(item);
     const showPoster = Boolean(posterUri);

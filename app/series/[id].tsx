@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { Image } from "expo-image";
@@ -62,16 +62,19 @@ export default function SeriesDetailScreen() {
   const [seasonIndex, setSeasonIndex] = useState(0);
   const [episodes, setEpisodes] = useState<EpisodeRow[]>([]);
   const [completedMediaIds, setCompletedMediaIds] = useState<Set<number>>(new Set());
+  // Finished in this app session — merged in immediately while refetches catch up.
+  const localCompletedMediaIds = useSeriesPlayStore((s) => s.completedMediaIds);
   const [playTarget, setPlayTarget] = useState<SeriesPlayTarget | null>(null);
   const [loading, setLoading] = useState(true);
   const [episodesLoading, setEpisodesLoading] = useState(false);
   const [focusZone, setFocusZone] = useState<FocusZone>("actions");
 
-  useFocusEffect(
-    useCallback(() => {
-      setZone("content");
-    }, [setZone]),
-  );
+  const mergedCompletedMediaIds = useMemo(() => {
+    if (localCompletedMediaIds.size === 0) return completedMediaIds;
+    const merged = new Set(completedMediaIds);
+    for (const id of localCompletedMediaIds) merged.add(id);
+    return merged;
+  }, [completedMediaIds, localCompletedMediaIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,6 +115,25 @@ export default function SeriesDetailScreen() {
   }, [seriesId]);
 
   const activeSeason = seasons[seasonIndex] ?? null;
+  const activeSeasonIdRef = useRef<number | null>(null);
+  activeSeasonIdRef.current = activeSeason?.id ?? null;
+
+  const loadEpisodes = useCallback(
+    async (seasonId: number, opts?: { silent?: boolean; cancelled?: () => boolean }) => {
+      if (!opts?.silent) setEpisodesLoading(true);
+      try {
+        const items = await fetchSeasonEpisodes(seasonId);
+        if (opts?.cancelled?.()) return;
+        setEpisodes(items);
+      } catch {
+        if (opts?.cancelled?.()) return;
+        if (!opts?.silent) setEpisodes([]);
+      } finally {
+        if (!opts?.silent && !opts?.cancelled?.()) setEpisodesLoading(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!activeSeason) {
@@ -119,21 +141,38 @@ export default function SeriesDetailScreen() {
       return;
     }
     let cancelled = false;
-    setEpisodesLoading(true);
-    fetchSeasonEpisodes(activeSeason.id)
-      .then((items) => {
-        if (!cancelled) setEpisodes(items);
-      })
-      .catch(() => {
-        if (!cancelled) setEpisodes([]);
-      })
-      .finally(() => {
-        if (!cancelled) setEpisodesLoading(false);
-      });
+    void loadEpisodes(activeSeason.id, { cancelled: () => cancelled });
     return () => {
       cancelled = true;
     };
-  }, [activeSeason]);
+  }, [activeSeason, loadEpisodes]);
+
+  // Returning from the player: silently refetch the season so freshly
+  // completed episodes (versions[].completed) show their badge without a
+  // loading flash or losing remote focus. Reads the season via ref so the
+  // effect isn't re-registered on tab switches.
+  const firstFocusRef = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      setZone("content");
+      if (firstFocusRef.current) {
+        firstFocusRef.current = false;
+        return;
+      }
+      const seasonId = activeSeasonIdRef.current;
+      if (!seasonId) return;
+      let cancelled = false;
+      void loadEpisodes(seasonId, { silent: true, cancelled: () => cancelled });
+      void fetchSeriesPlayTarget(seriesId)
+        .then((target) => {
+          if (!cancelled) setPlayTarget(target);
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [loadEpisodes, seriesId, setZone]),
+  );
 
   const hasSeasons = seasons.length > 0;
   const hasEpisodes = episodes.length > 0;
@@ -398,8 +437,9 @@ export default function SeriesDetailScreen() {
           ) : (
             <EpisodeList
               episodes={episodes}
-              completedMediaIds={completedMediaIds}
+              completedMediaIds={mergedCompletedMediaIds}
               enabled={focusZone === "episodes" && hasEpisodes}
+              resetIndexKey={activeSeason?.id ?? ""}
               onExitUp={() => {
                 if (hasSeasons) setFocusZone("seasons");
                 else setFocusZone("actions");
